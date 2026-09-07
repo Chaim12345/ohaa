@@ -1,0 +1,6 @@
+{
+  "name": "OpenHands",
+  "description": "Control plane and client for OpenHands Cloud AI coding agents to launch tasks, monitor execution logs, inspect tool calls, and manage sandbox workspaces.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
