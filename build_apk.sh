@@ -15,8 +15,8 @@ else
     exit 1
 fi
 
-echo "Executing: $GRADLE_CMD assembleDebug"
-$GRADLE_CMD assembleDebug --stacktrace
+echo "Executing: $GRADLE_CMD assembleDebug $@"
+$GRADLE_CMD assembleDebug "$@" --stacktrace
 
 echo "=========================================="
 echo " Build Completed Successfully! "
