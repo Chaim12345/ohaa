@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+.omc/
+.agents/
+.claude/
+skills-lock.json
+apk-serve/
+ui-shots/

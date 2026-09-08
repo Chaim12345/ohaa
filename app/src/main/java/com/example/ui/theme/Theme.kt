@@ -20,7 +20,8 @@ private val DarkColorScheme =
     onBackground = OpenHandsTextPrimaryDark,
     onSurface = OpenHandsTextPrimaryDark,
     onSurfaceVariant = OpenHandsTextSecondaryDark,
-    outline = OpenHandsBorderDark
+    outline = OpenHandsBorderDark,
+    error = StatusError
   )
 
 private val LightColorScheme =
@@ -37,15 +38,15 @@ private val LightColorScheme =
     onBackground = OpenHandsTextPrimaryLight,
     onSurface = OpenHandsTextPrimaryLight,
     onSurfaceVariant = OpenHandsTextSecondaryLight,
-    outline = OpenHandsBorderLight
+    outline = OpenHandsBorderLight,
+    error = StatusError
   )
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = true, // Default to rich developer dark theme, toggleable
+  darkTheme: Boolean = isSystemInDarkTheme(),
   content: @Composable () -> Unit,
 ) {
   val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
-

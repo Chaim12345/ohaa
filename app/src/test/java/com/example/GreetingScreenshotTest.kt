@@ -2,7 +2,7 @@ package com.example
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -21,17 +21,22 @@ class GreetingScreenshotTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun greeting_screenshot() {
+  fun home_screenshot() {
     composeTestRule.setContent {
-      MyApplicationTheme {
-        DashboardScreen(
+      MyApplicationTheme(darkTheme = true) {
+        HomeScreen(
             conversations = emptyList(),
             templates = emptyList(),
-            connectionStatus = "Cloud API V1: Ready",
-            connectionHealthy = true,
-            onStartNewTask = {},
-            onSelectConversation = {},
+            account = null,
+            accountError = null,
+            needsApiKey = true,
+            isRefreshing = false,
+            listError = null,
+            onNewConversation = {},
+            onOpenConversation = {},
+            onOpenAllConversations = {},
             onSelectTemplate = {},
+            onOpenSandboxes = {},
             onRefresh = {},
             onOpenSettings = {}
         )
@@ -41,4 +46,3 @@ class GreetingScreenshotTest {
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
   }
 }
-

@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,27 +18,29 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,307 +49,450 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.OpenHandsTertiaryDark
+import com.example.data.model.AccountInfo
+import com.example.data.model.LlmModel
+import com.example.data.model.LlmProfile
+import com.example.ui.components.DropdownSelector
+import com.example.ui.components.ErrorBanner
+import com.example.ui.components.InfoCard
+import com.example.ui.components.KeyValueRow
+import com.example.ui.components.LinkRow
+import com.example.ui.components.SectionTitle
+import com.example.ui.theme.StatusReady
+import com.example.ui.theme.StatusWaiting
+import com.example.ui.viewmodel.ThemeMode
 
 @Composable
 fun SettingsScreen(
     apiKey: String,
     baseUrl: String,
-    isLoading: Boolean,
-    connectionStatus: String?,
-    connectionHealthy: Boolean?,
+    isUsingBuildTimeKey: Boolean,
+    gitUserName: String,
+    gitUserEmail: String,
+    maxBudget: String,
+    themeMode: ThemeMode,
+    account: AccountInfo?,
+    accountError: String?,
+    isTesting: Boolean,
+    showNoiseEvents: Boolean,
     onApiKeyChanged: (String) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
-    onSaveConfig: () -> Unit,
+    onGitUserNameChanged: (String) -> Unit,
+    onGitUserEmailChanged: (String) -> Unit,
+    onMaxBudgetChanged: (String) -> Unit,
+    onThemeChanged: (ThemeMode) -> Unit,
+    onSave: () -> Unit,
     onTestConnection: () -> Unit,
+    onToggleNoise: () -> Unit,
     onClearCache: () -> Unit,
+    onOpenSandboxes: () -> Unit = {},
+    onOpenSecrets: () -> Unit = {},
+    llmProfiles: List<LlmProfile> = emptyList(),
+    onLoadProfiles: () -> Unit = {},
+    onActivateProfile: (String) -> Unit = {},
+    onCreateProfile: (String, String, String?, String?) -> Unit = { _, _, _, _ -> },
+    onDeleteProfile: (String) -> Unit = {},
+    onRenameProfile: (String, String) -> Unit = { _, _ -> },
+    onSetGitProviderToken: (String, String) -> Unit = { _, _ -> },
+    onClearGitProviderTokens: () -> Unit = {},
+    modelCatalog: List<LlmModel> = emptyList(),
+    isLoadingModels: Boolean = false,
+    onLoadModels: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var showApiKey by remember { mutableStateOf(false) }
+    var showKey by remember { mutableStateOf(false) }
+    var showAddProfile by remember { mutableStateOf(false) }
+    var renameProfileTarget by remember { mutableStateOf<LlmProfile?>(null) }
+    var deleteProfileTarget by remember { mutableStateOf<LlmProfile?>(null) }
+    var gitTokenProvider by remember { mutableStateOf("github") }
+    var gitTokenValue by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val fieldColors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline)
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+    Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(OpenHandsPrimaryDark.copy(alpha = 0.15f)),
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Cloud,
-                    contentDescription = null,
-                    tint = OpenHandsPrimaryDark,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
+            ) { Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
+            Spacer(Modifier.width(12.dp))
             Column {
-                Text(
-                    text = "OpenHands Cloud Config",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "API Key authentication and sandbox server settings",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Text("OpenHands Cloud account and server", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Connection Status Banner
-        if (connectionStatus != null) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (connectionHealthy == true)
-                        Color(0xFF1F3526)
-                    else
-                        Color(0xFF3B271F)
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-                    .testTag("connection_status_banner")
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(14.dp)
-                ) {
-                    Icon(
-                        imageVector = if (connectionHealthy == true) Icons.Default.CheckCircle else Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = if (connectionHealthy == true) Color(0xFF3FB950) else Color(0xFFF0883E),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = connectionStatus,
-                        fontSize = 12.sp,
-                        color = Color.White,
-                        lineHeight = 16.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+        Spacer(Modifier.height(18.dp))
+        // Account status
+        when {
+            isTesting -> InfoCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Checking connection…", fontSize = 13.sp)
                 }
             }
+            account != null -> InfoCard(tint = StatusReady) {
+                Column {
+                    Text("Connected", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(6.dp))
+                    account.email?.let { KeyValueRow("Email", it) }
+                    account.orgName?.let { KeyValueRow("Organization", it) }
+                    account.role?.let { KeyValueRow("Role", it) }
+                    account.gitUserName?.let { KeyValueRow("Git user", it, mono = true) }
+                    account.apiKeyName?.let { KeyValueRow("API key", it + (account.apiKeyAuthType?.let { t -> " ($t)" } ?: "")) }
+                    account.credits?.let { KeyValueRow("Credits", it) }
+                    account.maxBudgetPerTask?.let { KeyValueRow("Max budget / task", "$$it") }
+                    account.userId?.let { KeyValueRow("User ID", it, mono = true) }
+                }
+            }
+            accountError != null -> ErrorBanner(accountError, actionLabel = "Retry", onAction = onTestConnection)
+        }
+        if (isUsingBuildTimeKey) {
+            Spacer(Modifier.height(10.dp))
+            InfoCard(tint = StatusWaiting) {
+                Text(
+                    "Using the API key bundled with this build. Paste your own key below to override it on this device.",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 16.sp
+                )
+            }
         }
 
-        // OpenHands Cloud API Key Input
-        Text(
-            text = "OpenHands Cloud API Key",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Bearer token generated in your OpenHands Cloud account under Settings > API Keys.",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
+        Spacer(Modifier.height(18.dp))
+        SectionTitle("API key")
+        Spacer(Modifier.height(4.dp))
+        Text("Create one at app.all-hands.dev → Settings → API Keys. Sent as X-Access-Token.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChanged,
-            placeholder = { Text("Paste your OpenHands API Key here") },
-            leadingIcon = {
-                Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = OpenHandsPrimaryDark)
-            },
+            placeholder = { Text("sk-oh-…") },
+            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             trailingIcon = {
-                IconButton(onClick = { showApiKey = !showApiKey }) {
-                    Icon(
-                        imageVector = if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (showApiKey) "Hide Key" else "Show Key"
-                    )
+                IconButton(onClick = { showKey = !showKey }) {
+                    Icon(if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = if (showKey) "Hide" else "Show")
                 }
             },
-            visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("settings_api_key_input")
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth().testTag("settings_api_key")
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Cloud Server Base URL
-        Text(
-            text = "OpenHands Server Endpoint",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Default: https://app.all-hands.dev. Or specify a self-hosted Sandbox Server URL.",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("Server")
+        Spacer(Modifier.height(4.dp))
+        Text("Default is https://app.all-hands.dev. Point this at a self-hosted OpenHands app server if you run your own.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = baseUrl,
             onValueChange = onBaseUrlChanged,
             placeholder = { Text("https://app.all-hands.dev") },
-            leadingIcon = {
-                Icon(imageVector = Icons.Default.Cloud, contentDescription = null, tint = OpenHandsPrimaryDark)
-            },
+            leadingIcon = { Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("settings_base_url_input")
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth().testTag("settings_base_url")
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Buttons Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             Button(
-                onClick = onSaveConfig,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag("save_config_button")
-            ) {
-                Icon(imageVector = Icons.Default.Save, contentDescription = null, tint = Color.White)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Save Credentials", fontWeight = FontWeight.Bold, color = Color.White)
+                onClick = onSave, shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
+                modifier = Modifier.weight(1f).height(46.dp).testTag("settings_save")
+            ) { Text("Save & connect", fontWeight = FontWeight.Bold) }
+            OutlinedButton(onClick = onTestConnection, enabled = !isTesting, shape = RoundedCornerShape(12.dp), modifier = Modifier.height(46.dp).testTag("settings_test")) {
+                Text("Test")
             }
+        }
 
-            OutlinedButton(
-                onClick = onTestConnection,
-                enabled = !isLoading,
+        Spacer(Modifier.height(22.dp))
+        SectionTitle("Git author")
+        Spacer(Modifier.height(4.dp))
+        Text("Used for commits and pull requests the agent makes on your behalf. Defaults to openhands <openhands@all-hands.dev>.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = gitUserName,
+                onValueChange = onGitUserNameChanged,
+                label = { Text("Username") },
+                placeholder = { Text("openhands") },
+                singleLine = true,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag("test_connection_button")
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(imageVector = Icons.Default.NetworkCheck, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Connection")
+                colors = fieldColors,
+                modifier = Modifier.weight(1f).testTag("settings_git_user")
+            )
+            OutlinedTextField(
+                value = gitUserEmail,
+                onValueChange = onGitUserEmailChanged,
+                label = { Text("Email") },
+                placeholder = { Text("openhands@all-hands.dev") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors,
+                modifier = Modifier.weight(1f).testTag("settings_git_email")
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Budget")
+        Spacer(Modifier.height(4.dp))
+        Text("Stop a conversation once its accumulated cost reaches this amount in USD. Leave empty for the account default.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = maxBudget,
+            onValueChange = onMaxBudgetChanged,
+            label = { Text("Maximum budget per conversation ($)") },
+            placeholder = { Text("e.g. 5.00") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors,
+            modifier = Modifier.fillMaxWidth().testTag("settings_max_budget")
+        )
+
+        Spacer(Modifier.height(22.dp))
+        SectionTitle("Display")
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Show system events", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text("Include system prompts, token usage, state updates and condensations in the timeline.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = showNoiseEvents, onCheckedChange = { onToggleNoise() }, modifier = Modifier.testTag("settings_noise_toggle"))
+        }
+        Spacer(Modifier.height(6.dp))
+        DropdownSelector(
+            label = "Theme",
+            options = ThemeMode.entries.toList(),
+            selected = themeMode,
+            optionLabel = { it.label },
+            onSelect = onThemeChanged,
+            modifier = Modifier.testTag("settings_theme_dropdown")
+        )
+
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Cloud resources")
+        LinkRow("Manage sandboxes", onClick = onOpenSandboxes)
+        LinkRow("Manage secrets", onClick = onOpenSecrets)
+
+        SectionTitle("LLM profiles") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Add", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { showAddProfile = true }.padding(horizontal = 6.dp))
+                Text(if (llmProfiles.isEmpty()) "Load" else "Reload", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable(onClick = onLoadProfiles).padding(horizontal = 6.dp))
+            }
+        }
+        if (llmProfiles.isEmpty()) {
+            Text("Profiles define which model new conversations use. Tap Load to fetch them.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        }
+        llmProfiles.forEach { p ->
+            var itemMenuOpen by remember { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(listOfNotNull(p.model, if (p.apiKeySet) "key set" else "no key").joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (p.isActive) {
+                    Text("Default", fontSize = 12.sp, color = StatusReady, fontWeight = FontWeight.SemiBold)
+                }
+                Box {
+                    IconButton(onClick = { itemMenuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Profile options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = itemMenuOpen, onDismissRequest = { itemMenuOpen = false }) {
+                        if (!p.isActive) {
+                            DropdownMenuItem(text = { Text("Make default") }, onClick = { itemMenuOpen = false; onActivateProfile(p.name) })
+                        }
+                        DropdownMenuItem(text = { Text("Rename") }, onClick = { itemMenuOpen = false; renameProfileTarget = p })
+                        DropdownMenuItem(text = { Text("Delete") }, onClick = { itemMenuOpen = false; deleteProfileTarget = p })
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Git provider tokens")
+        Spacer(Modifier.height(4.dp))
+        Text("Configure Personal Access Tokens for GitHub, GitLab or Bitbucket repositories.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = gitTokenProvider,
+                onValueChange = { gitTokenProvider = it },
+                label = { Text("Provider") },
+                placeholder = { Text("github / gitlab / bitbucket") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors,
+                modifier = Modifier.weight(1f).testTag("settings_git_token_provider")
+            )
+            OutlinedTextField(
+                value = gitTokenValue,
+                onValueChange = { gitTokenValue = it },
+                label = { Text("Token") },
+                placeholder = { Text("ghp_…") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors,
+                modifier = Modifier.weight(1.5f).testTag("settings_git_token_value")
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { onSetGitProviderToken(gitTokenProvider, gitTokenValue); gitTokenValue = "" },
+                enabled = gitTokenProvider.isNotBlank() && gitTokenValue.isNotBlank(),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f)
+            ) { Text("Save token") }
+            TextButton(
+                onClick = onClearGitProviderTokens,
+                shape = RoundedCornerShape(10.dp)
+            ) { Text("Clear all", color = MaterialTheme.colorScheme.error) }
+        }
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Model catalog") {
+            Text(
+                when {
+                    isLoadingModels -> "Loading…"
+                    modelCatalog.isEmpty() -> "Load"
+                    else -> "Reload"
+                },
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onLoadModels)
+            )
+        }
+        if (modelCatalog.isEmpty() && !isLoadingModels) {
+            Text("Verified models available for new conversations. Tap Load to fetch the catalog.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        }
+        if (modelCatalog.isNotEmpty()) {
+            Text("${modelCatalog.size} verified models available", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        }
 
-        // API Key Instructions Card
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Data")
+        OutlinedButton(onClick = onClearCache, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().testTag("settings_clear_cache")) {
+            Text("Clear local cache")
+        }
+        Text("Removes cached conversations and events on this device. Nothing is deleted from the cloud.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("Links")
+        LinkRow("OpenHands Cloud web app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://app.all-hands.dev"))) }
+        LinkRow("Cloud API documentation") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://docs.openhands.dev/openhands/usage/cloud/cloud-api"))) }
+        LinkRow("Manage API keys") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://app.all-hands.dev/settings/api-keys"))) }
+        LinkRow("Install the GitHub app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/apps/openhands"))) }
+        LinkRow("Install the GitLab app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://docs.openhands.dev/openhands/usage/cloud/gitlab-installation"))) }
+        LinkRow("Install the Bitbucket app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://docs.openhands.dev/openhands/usage/cloud/bitbucket-installation"))) }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "OpenHands Cloud for Android ${com.example.BuildConfig.VERSION_NAME}",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = "How to get an OpenHands Cloud API Key:",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(24.dp))
+    }
+    if (showAddProfile) {
+        var name by remember { mutableStateOf("") }
+        var model by remember { mutableStateOf("") }
+        var baseUrlInput by remember { mutableStateOf("") }
+        var apiKeyInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddProfile = false },
+            title = { Text("Add LLM profile") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it },
+                        label = { Text("Profile name") }, placeholder = { Text("e.g. gpt-4o-custom") },
+                        singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = model, onValueChange = { model = it },
+                        label = { Text("Model identifier") }, placeholder = { Text("e.g. openai/gpt-4o") },
+                        singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = baseUrlInput, onValueChange = { baseUrlInput = it },
+                        label = { Text("Base URL (optional)") },
+                        singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = apiKeyInput, onValueChange = { apiKeyInput = it },
+                        label = { Text("API key (optional)") },
+                        singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAddProfile = false
+                        onCreateProfile(name.trim(), model.trim(), baseUrlInput.trim().ifEmpty { null }, apiKeyInput.trim().ifEmpty { null })
+                    },
+                    enabled = name.isNotBlank() && model.isNotBlank()
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showAddProfile = false }) { Text("Cancel") } }
+        )
+    }
+
+    renameProfileTarget?.let { p ->
+        var newName by remember { mutableStateOf(p.name) }
+        AlertDialog(
+            onDismissRequest = { renameProfileTarget = null },
+            title = { Text("Rename profile") },
+            text = {
+                OutlinedTextField(
+                    value = newName, onValueChange = { newName = it },
+                    label = { Text("New profile name") }, singleLine = true,
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "1. Sign in to your account at https://app.all-hands.dev\n" +
-                            "2. Navigate to Settings > API Keys tab\n" +
-                            "3. Click \"Create API Key\" and give it a label\n" +
-                            "4. Copy the generated key and paste it above\n" +
-                            "5. The app uses the Bearer token for V1 API endpoints (/api/v1/app-conversations)",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 18.sp
-                )
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        renameProfileTarget = null
+                        onRenameProfile(p.name, newName.trim())
+                    },
+                    enabled = newName.isNotBlank()
+                ) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renameProfileTarget = null }) { Text("Cancel") } }
+        )
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Cache reset button
-        OutlinedButton(
-            onClick = onClearCache,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("clear_cache_button")
-        ) {
-            Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Reset Local Database Cache")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // About info
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = "OpenHands Agent Platform",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "OpenHands (formerly OpenDevin by All-Hands-AI) is an open-source AI software development agent capable of modifying code, running bash commands, browsing the web, and running docker sandboxes.",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 16.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
+    deleteProfileTarget?.let { p ->
+        AlertDialog(
+            onDismissRequest = { deleteProfileTarget = null },
+            title = { Text("Delete profile?") },
+            text = { Text("Are you sure you want to delete profile \"${p.name}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteProfileTarget = null
+                        onDeleteProfile(p.name)
+                    }
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteProfileTarget = null }) { Text("Cancel") } }
+        )
     }
 }
