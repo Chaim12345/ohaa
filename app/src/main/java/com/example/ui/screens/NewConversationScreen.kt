@@ -219,7 +219,7 @@ fun NewConversationScreen(
             }
             if (form.repository.isNotBlank()) {
                 Pill(
-                    text = form.repository + (form.branch?.let { "@$it" } ?: ""),
+                    text = form.repository + (if (form.branch.isNotBlank()) "@${form.branch}" else ""),
                     color = MaterialTheme.colorScheme.primary,
                     icon = Icons.Default.Code
                 )
@@ -323,6 +323,14 @@ fun NewConversationScreen(
                 },
                 modifier = Modifier.testTag("llm_profile_dropdown")
             )
+            if (form.llmProfile != null || form.llmModel.isNotBlank()) {
+                TextButton(
+                    onClick = { onFormChange { it.copy(llmProfile = null, llmModel = "") } },
+                    modifier = Modifier.align(Alignment.End).testTag("llm_reset_default")
+                ) {
+                    Text("Reset to account default", fontSize = 12.sp)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = form.title, onValueChange = { v -> onFormChange { it.copy(title = v) } },

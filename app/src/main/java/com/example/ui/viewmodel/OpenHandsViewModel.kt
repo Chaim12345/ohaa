@@ -586,7 +586,10 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.update { it.copy(screenStack = emptyList()) }
                     }
                 }
-                syncEvents(conversationId, full = false)
+                // Count-first: skip the heavy event pages when nothing arrived since last sync.
+                if (!repository.eventsUpToDate(conversationId).getOrDefault(false)) {
+                    syncEvents(conversationId, full = false)
+                }
             }
         }
     }
@@ -771,6 +774,17 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.update { it.copy(isMutatingConversation = true) }
             repository.switchConversationProfile(conversationId, profileName)
                 .onSuccess { notify("Switched to profile $profileName"); repository.refreshConversation(conversationId) }
+                .onFailure { notify(it.friendlyMessage()) }
+            _uiState.update { it.copy(isMutatingConversation = false) }
+        }
+    }
+
+    /** Switches the ACP-exposed model for a running conversation (model rows in the dialog). */
+    fun switchConversationModel(conversationId: String, modelId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMutatingConversation = true) }
+            repository.switchConversationModel(conversationId, modelId)
+                .onSuccess { notify("Switched to model $modelId"); repository.refreshConversation(conversationId) }
                 .onFailure { notify(it.friendlyMessage()) }
             _uiState.update { it.copy(isMutatingConversation = false) }
         }

@@ -104,6 +104,7 @@ fun ConversationDetailScreen(
     onSetPublic: (Boolean) -> Unit = {},
     onDownloadTrajectory: suspend () -> Result<ByteArray> = { Result.failure(Exception("Not supported")) },
     onOpenFile: (String) -> Unit = {},
+    onSwitchModel: (String) -> Unit = {},
     onOpenFiles: () -> Unit,
     onOpenChanges: () -> Unit,
     onToggleNoise: () -> Unit,
@@ -331,7 +332,7 @@ fun ConversationDetailScreen(
                     IconButton(
                         onClick = { if (canSend) { onSend(draft); draft = "" } },
                         enabled = canSend,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(48.dp)
                             .background(if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
                             .testTag("send_button")
                     ) {
@@ -404,7 +405,14 @@ fun ConversationDetailScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onSwitchProfile(m.id); showProfiles = false }
+                                    .clickable {
+                                        if (m.provider.isNullOrBlank() && m.id.matches(Regex("^[A-Za-z0-9._-]+$"))) {
+                                            onSwitchProfile(m.id)
+                                        } else {
+                                            onSwitchModel(m.id)
+                                        }
+                                        showProfiles = false
+                                    }
                                     .padding(vertical = 8.dp)
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {

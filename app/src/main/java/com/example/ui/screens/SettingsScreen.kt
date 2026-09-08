@@ -376,7 +376,9 @@ fun SettingsScreen(
         if (modelCatalog.isEmpty() && !isLoadingModels) {
             Text("Verified models available for new conversations. Tap Load to fetch the catalog.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
         }
-        Text("${modelCatalog.size} verified models available", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        if (modelCatalog.isNotEmpty()) {
+            Text("${modelCatalog.size} verified models available", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        }
 
         Spacer(Modifier.height(14.dp))
         SectionTitle("Data")

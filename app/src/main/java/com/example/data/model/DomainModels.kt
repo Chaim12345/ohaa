@@ -86,6 +86,7 @@ enum class ConversationStatus(val label: String) {
     UNKNOWN("Unknown");
 
     val isActive: Boolean get() = this == RUNNING || this == STARTING
+    val shortLabel: String get() = if (label.length > 8) label.take(6) + "…" else label
 
     companion object {
         fun derive(sandbox: SandboxStatus, execution: ExecutionStatus): ConversationStatus {

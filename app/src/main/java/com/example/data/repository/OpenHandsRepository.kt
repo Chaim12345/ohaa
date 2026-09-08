@@ -25,6 +25,7 @@ import com.example.data.model.RenameProfileRequest
 import com.example.data.model.SetProviderTokensRequest
 import com.example.data.model.Skill
 import com.example.data.model.SwitchProfileRequest
+import com.example.data.model.SwitchAcpModelRequest
 import com.example.data.model.Conversation
 import com.example.data.model.GitBranch
 import com.example.data.model.GitChange
@@ -471,6 +472,16 @@ class OpenHandsRepository(
 
     suspend fun countEvents(conversationId: String): Result<Int> = io { api.countEvents(conversationId).bodyOrThrow() }
 
+    /**
+     * Cheap change check so the detail loop can skip heavy event pages when nothing
+     * arrived: compares the server count against the local cache (optimistic local
+     * rows only ever make the local count larger, forcing a sync that drops them).
+     */
+    suspend fun eventsUpToDate(conversationId: String): Result<Boolean> = io {
+        val remote = api.countEvents(conversationId).bodyOrThrow()
+        remote <= eventDao.countForConversation(conversationId)
+    }
+
     // ----------------------------------------------------------------- sandboxes
 
     suspend fun listSandboxes(): Result<List<Sandbox>> = io {
@@ -668,6 +679,15 @@ class OpenHandsRepository(
     /** Switches the LLM profile of a running conversation. */
     suspend fun switchConversationProfile(conversationId: String, profileName: String): Result<Unit> = io {
         api.switchProfile(conversationId, SwitchProfileRequest(profileName)).bodyOrThrow()
+        Unit
+    }
+
+    /**
+     * Switches the ACP-exposed model for a running conversation
+     * (POST /app-conversations/{id}/switch_acp_model, body {model_id}).
+     */
+    suspend fun switchConversationModel(conversationId: String, modelId: String): Result<Unit> = io {
+        api.switchAcpModel(conversationId, SwitchAcpModelRequest(modelId)).bodyOrThrow()
         Unit
     }
 

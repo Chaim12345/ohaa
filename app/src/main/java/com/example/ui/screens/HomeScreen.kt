@@ -144,7 +144,7 @@ fun HomeScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxWidth().height(140.dp)
                     )
-                    Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE0D1117)))))
+                    Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)))))
                     Column(modifier = Modifier.align(Alignment.BottomStart).padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
                             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (account != null) Color(0xFF3FB950) else Color(0xFFF0883E)))

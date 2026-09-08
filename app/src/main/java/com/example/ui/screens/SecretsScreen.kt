@@ -113,6 +113,13 @@ fun SecretsScreen(
                 Column {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (ENV_VAR_STYLE)") }, singleLine = true, isError = name.isNotEmpty() && !validName, modifier = Modifier.fillMaxWidth().testTag("secret_name"))
                     Spacer(Modifier.height(8.dp))
+                    if (name.isNotEmpty() && !validName) {
+                        Text(
+                            "Name must start with a letter or underscore and contain only letters, digits, and underscores.",
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
                     OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text("Value") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().testTag("secret_value"))
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
