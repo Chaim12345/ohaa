@@ -107,7 +107,13 @@ fun NewConversationScreen(
     var showRepoPicker by remember { mutableStateOf(false) }
     var showBranchPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(hasApiKey) { if (hasApiKey) onLoadSuggestedTasks() }
+    LaunchedEffect(hasApiKey) {
+        if (hasApiKey) {
+            onLoadSuggestedTasks()
+            if (llmProfiles.isEmpty()) onLoadProfiles()
+            if (modelCatalog.isEmpty()) onLoadModels()
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(8.dp))
