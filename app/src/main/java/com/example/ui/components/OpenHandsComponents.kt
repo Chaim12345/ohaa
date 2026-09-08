@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -42,6 +44,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,10 +73,7 @@ import com.example.data.model.AgentEvent
 import com.example.data.model.ConversationStatus
 import com.example.data.model.EventCategory
 import com.example.data.model.SandboxStatus
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsTerminalBg
-import com.example.ui.theme.OpenHandsTertiaryDark
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusPaused
 import com.example.ui.theme.StatusReady
@@ -376,14 +377,14 @@ private fun styleFor(event: AgentEvent): EventStyle {
     return when {
         event.isError -> EventStyle(Icons.Default.Error, "ERROR", StatusError)
         else -> when (event.category) {
-            EventCategory.USER_MESSAGE -> EventStyle(Icons.Default.SmartToy, "YOU", OpenHandsPrimaryDark)
-            EventCategory.AGENT_MESSAGE -> EventStyle(Icons.Default.SmartToy, "AGENT", OpenHandsPrimaryDark)
-            EventCategory.THOUGHT -> EventStyle(Icons.Default.Lightbulb, "REASONING", OpenHandsSecondaryDark)
-            EventCategory.COMMAND -> EventStyle(Icons.Default.Terminal, "TERMINAL", OpenHandsPrimaryDark)
-            EventCategory.FILE_EDIT -> EventStyle(Icons.Default.Edit, "FILE EDIT", OpenHandsTertiaryDark)
+            EventCategory.USER_MESSAGE -> EventStyle(Icons.Default.SmartToy, "YOU", MaterialTheme.colorScheme.primary)
+            EventCategory.AGENT_MESSAGE -> EventStyle(Icons.Default.SmartToy, "AGENT", MaterialTheme.colorScheme.primary)
+            EventCategory.THOUGHT -> EventStyle(Icons.Default.Lightbulb, "REASONING", MaterialTheme.colorScheme.secondary)
+            EventCategory.COMMAND -> EventStyle(Icons.Default.Terminal, "TERMINAL", MaterialTheme.colorScheme.primary)
+            EventCategory.FILE_EDIT -> EventStyle(Icons.Default.Edit, "FILE EDIT", MaterialTheme.colorScheme.tertiary)
             EventCategory.FILE_READ -> EventStyle(Icons.Default.Description, "FILES", onSurface)
-            EventCategory.BROWSER -> EventStyle(Icons.Default.Language, "BROWSER", OpenHandsSecondaryDark)
-            EventCategory.TOOL -> EventStyle(Icons.Default.Settings, event.toolName?.uppercase() ?: "TOOL", OpenHandsSecondaryDark)
+            EventCategory.BROWSER -> EventStyle(Icons.Default.Language, "BROWSER", MaterialTheme.colorScheme.secondary)
+            EventCategory.TOOL -> EventStyle(Icons.Default.Settings, event.toolName?.uppercase() ?: "TOOL", MaterialTheme.colorScheme.secondary)
             EventCategory.OBSERVATION -> EventStyle(Icons.Default.Terminal, "OUTPUT", onSurface)
             EventCategory.FINISH -> EventStyle(Icons.Default.Flag, "FINISHED", StatusReady)
             EventCategory.ERROR -> EventStyle(Icons.Default.Error, "ERROR", StatusError)
@@ -485,16 +486,16 @@ private fun UserMessageBubble(event: AgentEvent, modifier: Modifier = Modifier) 
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         Card(
             shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp),
-            colors = CardDefaults.cardColors(containerColor = if (event.isError) StatusError else OpenHandsPrimaryDark),
+            colors = CardDefaults.cardColors(containerColor = if (event.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth(0.88f)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text(event.title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White.copy(alpha = 0.85f))
-                    Text(formatClockTime(event.timestamp), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color.White.copy(alpha = 0.7f))
+                    Text(event.title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                    Text(formatClockTime(event.timestamp), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(event.body ?: "", fontSize = 14.sp, color = Color.White, lineHeight = 19.sp)
+                Text(event.body ?: "", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimary, lineHeight = 19.sp)
             }
         }
     }
@@ -530,5 +531,83 @@ fun LinkRow(label: String, onClick: () -> Unit) {
     ) {
         Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+    }
+}
+
+/**
+ * Dropdown selector rendered as a field-like surface. Used for config choices that mirror
+ * the webui's select dropdowns (theme, LLM model, profile).
+ */
+@Composable
+fun <T> DropdownSelector(
+    label: String,
+    options: List<T>,
+    selected: T?,
+    optionLabel: (T) -> String,
+    optionSubtitle: ((T) -> String)? = null,
+    enabled: Boolean = true,
+    emptyText: String? = null,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.height(6.dp))
+        Box {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = enabled) { expanded = true }
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            selected?.let(optionLabel) ?: emptyText ?: "Select…",
+                            fontSize = 13.sp,
+                            color = if (selected != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val subtitle = selected?.let { optionSubtitle?.invoke(it) }
+                        if (!subtitle.isNullOrBlank()) {
+                            Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 320.dp)) {
+                if (options.isEmpty()) {
+                    DropdownMenuItem(text = { Text(emptyText ?: "Nothing available", fontSize = 13.sp) }, onClick = { expanded = false }, enabled = false)
+                }
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(optionLabel(option), fontSize = 13.sp, fontWeight = if (option == selected) FontWeight.SemiBold else FontWeight.Normal)
+                                    optionSubtitle?.invoke(option)?.let {
+                                        Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                if (option == selected) {
+                                    Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        onClick = { expanded = false; onSelect(option) }
+                    )
+                }
+            }
+        }
     }
 }

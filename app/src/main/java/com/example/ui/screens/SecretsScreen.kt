@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CustomSecret
 import com.example.ui.components.EmptyState
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 /** Manages custom secrets exposed to sandboxes (GET/POST/DELETE /api/v1/secrets). */
 @Composable
@@ -73,7 +72,7 @@ fun SecretsScreen(
                 IconButton(onClick = { showCreate = true }, modifier = Modifier.testTag("secret_add")) { Icon(Icons.Default.Add, contentDescription = "Add secret", tint = MaterialTheme.colorScheme.primary) }
             }
         }
-        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
 
         if (secrets.isEmpty() && !isLoading) {
             EmptyState("No secrets", "Add API keys or tokens the agent needs. Values are write-only: they can be replaced but never read back.")
@@ -88,7 +87,7 @@ fun SecretsScreen(
                     modifier = Modifier.fillMaxWidth().testTag("secret_${secret.name}")
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                        Icon(Icons.Default.Key, contentDescription = null, tint = OpenHandsPrimaryDark)
+                        Icon(Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(secret.name, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)

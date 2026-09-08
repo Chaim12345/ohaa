@@ -17,3 +17,6 @@ local.properties
 .env
 debug.keystore
 .omc/
+.agents/
+.claude/
+skills-lock.json

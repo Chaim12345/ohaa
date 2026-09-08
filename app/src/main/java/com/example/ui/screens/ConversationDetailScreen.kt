@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -60,17 +66,19 @@ import com.example.data.model.AgentEvent
 import com.example.data.model.Conversation
 import com.example.data.model.ConversationStatus
 import com.example.data.model.LlmProfile
+import com.example.data.model.LlmModel
 import com.example.data.model.SandboxStatus
 import com.example.data.model.Skill
 import com.example.ui.components.ErrorBanner
 import com.example.ui.components.EventCard
 import com.example.ui.components.InfoCard
+import com.example.ui.components.KeyValueRow
 import com.example.ui.components.Pill
 import com.example.ui.components.SandboxBadge
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatCost
 import com.example.ui.components.formatTokens
-import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.theme.StatusReady
 import com.example.ui.theme.StatusWaiting
 
 @Composable
@@ -82,6 +90,9 @@ fun ConversationDetailScreen(
     isMutating: Boolean,
     showNoise: Boolean,
     error: String?,
+    modelCatalog: List<LlmModel> = emptyList(),
+    isLoadingModels: Boolean = false,
+    onLoadModels: () -> Unit = {},
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSend: (String) -> Unit,
@@ -89,6 +100,8 @@ fun ConversationDetailScreen(
     onResumeSandbox: (String) -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
+    onSetPublic: (Boolean) -> Unit = {},
+    onDownloadTrajectory: suspend () -> Result<ByteArray> = { Result.failure(Exception("Not supported")) },
     onOpenFiles: () -> Unit,
     onOpenChanges: () -> Unit,
     onToggleNoise: () -> Unit,
@@ -105,8 +118,28 @@ fun ConversationDetailScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isExporting by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                isExporting = true
+                onDownloadTrajectory().onSuccess { bytes ->
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(bytes)
+                        }
+                    }
+                }
+                isExporting = false
+            }
+        }
+    }
 
     LaunchedEffect(events.size) {
         if (events.isNotEmpty()) listState.animateScrollToItem(events.size - 1)
@@ -130,11 +163,11 @@ fun ConversationDetailScreen(
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (!conversation?.repository.isNullOrBlank()) {
-                                Icon(Icons.Default.Code, contentDescription = null, tint = OpenHandsPrimaryDark, modifier = Modifier.size(12.dp))
+                                Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
                                 Spacer(Modifier.width(3.dp))
                                 Text(
                                     conversation?.repository + (conversation?.branch?.let { "@$it" } ?: ""),
-                                    fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = OpenHandsPrimaryDark,
+                                    fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                                 )
                                 Spacer(Modifier.width(8.dp))
@@ -153,6 +186,23 @@ fun ConversationDetailScreen(
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(text = { Text("Browse files") }, onClick = { menuOpen = false; onOpenFiles() })
                             DropdownMenuItem(text = { Text("Git changes & diffs") }, onClick = { menuOpen = false; onOpenChanges() })
+                            DropdownMenuItem(
+                                text = { Text(if (conversation?.isPublic == true) "Make private" else "Make public") },
+                                enabled = !isMutating,
+                                onClick = {
+                                    menuOpen = false
+                                    conversation?.let { onSetPublic(!(it.isPublic)) }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (isExporting) "Exporting trajectory…" else "Download trajectory") },
+                                enabled = !isExporting && !isMutating && conversation != null,
+                                onClick = {
+                                    menuOpen = false
+                                    val filename = "trajectory-${(conversation?.id ?: "conversation").take(8)}.json"
+                                    exportLauncher.launch(filename)
+                                }
+                            )
                             conversation?.sandboxId?.let { sid ->
                                 when (conversation.sandboxStatus) {
                                     SandboxStatus.RUNNING, SandboxStatus.STARTING ->
@@ -169,7 +219,12 @@ fun ConversationDetailScreen(
                                 })
                             }
                             DropdownMenuItem(text = { Text("Active skills") }, onClick = { menuOpen = false; onLoadSkills() })
-                            DropdownMenuItem(text = { Text("Switch LLM profile") }, enabled = !isMutating, onClick = { menuOpen = false; onLoadProfiles(); showProfiles = true })
+                            DropdownMenuItem(
+                                text = { Text("Switch LLM model / profile") },
+                                enabled = !isMutating,
+                                onClick = { menuOpen = false; onLoadProfiles(); if (modelCatalog.isEmpty()) onLoadModels(); showProfiles = true }
+                            )
+                            DropdownMenuItem(text = { Text("Conversation details") }, onClick = { menuOpen = false; showDetails = true })
                             DropdownMenuItem(text = { Text(if (showNoise) "Hide system events" else "Show system events") }, onClick = { menuOpen = false; onToggleNoise() })
                             DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; showRename = true })
                             DropdownMenuItem(text = { Text("Delete conversation") }, onClick = { menuOpen = false; showDelete = true })
@@ -192,7 +247,7 @@ fun ConversationDetailScreen(
                         )
                     }
                 }
-                if (isSyncing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+                if (isSyncing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -202,7 +257,7 @@ fun ConversationDetailScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         if (isSyncing || conversation?.status?.isActive == true) {
-                            CircularProgressIndicator(color = OpenHandsPrimaryDark, modifier = Modifier.size(28.dp))
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.height(10.dp))
                         }
                         Text(
@@ -266,7 +321,7 @@ fun ConversationDetailScreen(
                         placeholder = { Text(if (sandboxStarting) "Queue a message while the sandbox starts…" else "Message the agent…") },
                         maxLines = 4,
                         shape = RoundedCornerShape(18.dp),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
                         modifier = Modifier.weight(1f).testTag("message_input")
                     )
                     Spacer(Modifier.width(8.dp))
@@ -275,7 +330,7 @@ fun ConversationDetailScreen(
                         onClick = { if (canSend) { onSend(draft); draft = "" } },
                         enabled = canSend,
                         modifier = Modifier.size(44.dp)
-                            .background(if (canSend) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+                            .background(if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
                             .testTag("send_button")
                     ) {
                         if (isSending) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
@@ -292,10 +347,20 @@ fun ConversationDetailScreen(
     if (showProfiles) {
         AlertDialog(
             onDismissRequest = { showProfiles = false },
-            title = { Text("Switch LLM profile") },
+            title = { Text("Switch LLM model / profile") },
             text = {
                 Column {
-                    if (llmProfiles.isEmpty()) Text("Loading profiles…", fontSize = 13.sp)
+                    if (llmProfiles.isEmpty() && modelCatalog.isEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLoadingModels) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Loading profiles and models…", fontSize = 13.sp)
+                        }
+                    }
+                    if (llmProfiles.isNotEmpty()) {
+                        Text("LLM PROFILES", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                    }
                     llmProfiles.forEach { p ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -306,6 +371,28 @@ fun ConversationDetailScreen(
                                 Text(listOfNotNull(p.model, p.baseUrl).joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if (!p.apiKeySet) Pill(text = "no key", color = StatusWaiting, icon = null)
+                        }
+                    }
+                    if (modelCatalog.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("MODELS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    Column(modifier = Modifier.height(260.dp).verticalScroll(rememberScrollState())) {
+                        modelCatalog.forEach { m ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSwitchProfile(m.id); showProfiles = false }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(m.id, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                                    if (!m.provider.isNullOrBlank()) Text(m.provider, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (m.verified) Icon(Icons.Default.CheckCircle, contentDescription = "verified", tint = StatusReady, modifier = Modifier.size(14.dp))
+                            }
                         }
                     }
                 }
@@ -339,6 +426,28 @@ fun ConversationDetailScreen(
             confirmLabel = "Delete",
             onDismiss = { showDelete = false },
             onConfirm = { showDelete = false; onDelete() }
+        )
+    }
+    if (showDetails && conversation != null) {
+        AlertDialog(
+            onDismissRequest = { showDetails = false },
+            title = { Text("Conversation details") },
+            text = {
+                Column {
+                    KeyValueRow("Title", conversation.displayTitle)
+                    conversation.repository?.let { KeyValueRow("Repository", it, mono = true) }
+                    conversation.branch?.let { KeyValueRow("Branch", it, mono = true) }
+                    conversation.llmModel?.let { KeyValueRow("Model", it, mono = true) }
+                    KeyValueRow("Cost", formatCost(conversation.cost))
+                    KeyValueRow("Tokens", formatTokens(conversation.promptTokens + conversation.completionTokens))
+                    KeyValueRow("Visibility", if (conversation.isPublic) "Public" else "Private")
+                    conversation.trigger?.let { KeyValueRow("Trigger", it) }
+                    conversation.prNumbers.takeIf { it.isNotEmpty() }?.let { KeyValueRow("PRs", it.joinToString(", ")) }
+                    KeyValueRow("Conversation ID", conversation.id, mono = true)
+                    conversation.sandboxId?.let { KeyValueRow("Sandbox ID", it, mono = true) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showDetails = false }) { Text("Close") } }
         )
     }
 }

@@ -19,6 +19,10 @@ import com.example.data.model.AppConversationDto
 import com.example.data.model.CreateSecretRequest
 import com.example.data.model.CustomSecret
 import com.example.data.model.LlmProfile
+import com.example.data.model.LlmModel
+import com.example.data.model.ProviderTokenDto
+import com.example.data.model.RenameProfileRequest
+import com.example.data.model.SetProviderTokensRequest
 import com.example.data.model.Skill
 import com.example.data.model.SwitchProfileRequest
 import com.example.data.model.Conversation
@@ -55,6 +59,8 @@ data class StartConversationParams(
     val title: String? = null,
     val agentType: String = "default",
     val llmModel: String? = null,
+    /** LLM profile to start the conversation with (sent as agent_profile_id). */
+    val llmProfile: String? = null,
     val observabilitySpanName: String? = null,
     val observabilityTags: List<String>? = null,
     val observabilityMetadata: Map<String, String>? = null
@@ -101,6 +107,25 @@ class OpenHandsRepository(
     var showNoiseEvents: Boolean
         get() = prefs.getBoolean(KEY_SHOW_NOISE, false)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_NOISE, value).apply()
+
+    /** Git author used for agent commits; mirrors webui Application settings. */
+    var gitUserName: String?
+        get() = prefs.getString(KEY_GIT_USER_NAME, null)?.trim()?.ifEmpty { null }
+        set(value) = prefs.edit().putString(KEY_GIT_USER_NAME, value?.trim()).apply()
+
+    var gitUserEmail: String?
+        get() = prefs.getString(KEY_GIT_USER_EMAIL, null)?.trim()?.ifEmpty { null }
+        set(value) = prefs.edit().putString(KEY_GIT_USER_EMAIL, value?.trim()).apply()
+
+    /** Per-conversation spending cap in USD; null = account default. */
+    var maxBudgetPerTask: Double?
+        get() = java.lang.Double.longBitsToDouble(prefs.getLong(KEY_MAX_BUDGET, 0L)).takeIf { it > 0.0 }
+        set(value) = prefs.edit().putLong(KEY_MAX_BUDGET, java.lang.Double.doubleToRawLongBits(value ?: 0.0)).apply()
+
+    /** Theme preference: SYSTEM, LIGHT or DARK. */
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME_MODE, null) ?: "SYSTEM"
+        set(value) = prefs.edit().putString(KEY_THEME_MODE, value).apply()
 
     @Volatile
     private var api: OpenHandsApiService = serviceFactory(baseUrl) { apiKey }
@@ -225,9 +250,23 @@ class OpenHandsRepository(
             title = params.title?.trim()?.ifEmpty { null },
             agentType = params.agentType,
             llmModel = params.llmModel?.trim()?.ifEmpty { null },
+            agentProfileId = params.llmProfile?.trim()?.ifEmpty { null },
             observabilitySpanName = params.observabilitySpanName?.trim()?.ifEmpty { null },
             observabilityTags = params.observabilityTags?.map { it.trim() }?.filter { it.isNotEmpty() }?.ifEmpty { null },
             observabilityMetadata = params.observabilityMetadata?.filterValues { it.isNotBlank() }?.ifEmpty { null }
+        ).copy(
+            systemMessageSuffix = buildString {
+                append("\n\nGit author for all commits: <")
+                append(gitUserName ?: "openhands")
+                append("> <")
+                append(gitUserEmail ?: "openhands@all-hands.dev")
+                append(">.")
+                maxBudgetPerTask?.let {
+                    append(" Stop when accumulated cost exceeds $")
+                    append(java.lang.String.format(java.util.Locale.US, "%.2f", it))
+                    append(".")
+                }
+            }.takeIf { gitUserName != null || gitUserEmail != null || maxBudgetPerTask != null }
         )
 
         var task = try {
@@ -460,6 +499,21 @@ class OpenHandsRepository(
         conversationDao.updateSandboxStatusBySandbox(sandboxId, SandboxStatus.MISSING.name)
     }
 
+    /** Creates a new sandbox workspace, optionally pinned to a specific spec. */
+    suspend fun createSandbox(specId: String? = null): Result<Sandbox> = io {
+        api.createSandbox(specId).bodyOrThrow().toDomain()
+    }
+
+    /** Lists available sandbox specs (images/environments). */
+    suspend fun searchSandboxSpecs(): Result<List<Pair<String, String?>>> = io {
+        api.searchSandboxSpecs(limit = 50).bodyOrThrow().items.map { it.id to it.workingDir }
+    }
+
+    /** Full trajectory bytes for exporting or sharing a conversation. */
+    suspend fun downloadTrajectory(conversationId: String): Result<ByteArray> = io {
+        api.downloadTrajectory(conversationId).bodyOrThrow().bytes()
+    }
+
     // ------------------------------------------------------------- files & git
 
     suspend fun listFiles(conversationId: String, path: String?): Result<List<String>> = io {
@@ -483,9 +537,25 @@ class OpenHandsRepository(
         GitDiff(filePath, d.original ?: "", d.modified ?: "")
     }
 
-    /** `provider` is required by the server (422 otherwise): github, gitlab, bitbucket, ... */
-    suspend fun searchRepositories(query: String?, provider: String = "github"): Result<List<GitRepository>> = io {
-        api.searchRepositories(query = query?.trim()?.ifEmpty { null }, provider = provider, limit = 30).bodyOrThrow().items.map {
+    /**
+     * Paged repository search across GitHub, GitLab, Bitbucket, etc.
+     * Returns a pair of (repositories, nextPageId).
+     */
+    suspend fun searchRepositoriesPaged(
+        query: String?,
+        provider: String = "github",
+        installationId: String? = null,
+        pageId: String? = null,
+        limit: Int = 30
+    ): Result<Pair<List<GitRepository>, String?>> = io {
+        val page = api.searchRepositories(
+            query = query?.trim()?.ifEmpty { null },
+            provider = provider,
+            installationId = installationId?.trim()?.ifEmpty { null },
+            pageId = pageId,
+            limit = limit
+        ).bodyOrThrow()
+        val repos = page.items.map {
             GitRepository(
                 fullName = it.fullName,
                 provider = it.gitProvider,
@@ -495,6 +565,20 @@ class OpenHandsRepository(
                 pushedAt = IsoTime.toEpochMillis(it.pushedAt)
             )
         }
+        repos to page.nextPageId
+    }
+
+    /** `provider` is required by the server (422 otherwise): github, gitlab, bitbucket, ... */
+    suspend fun searchRepositories(query: String?, provider: String = "github"): Result<List<GitRepository>> =
+        searchRepositoriesPaged(query = query, provider = provider).map { it.first }
+
+    suspend fun searchInstallations(provider: String = "github"): Result<List<String>> = io {
+        api.searchInstallations(provider = provider).bodyOrThrow().items
+    }
+
+    suspend fun getGitOrganizations(): Result<List<String>> = io {
+        val orgs = api.gitOrganizations().bodyOrNullOrThrow()?.organizations ?: emptyList()
+        orgs.mapNotNull { it?.toString() }
     }
 
     suspend fun searchBranches(repository: String, provider: String?, query: String?): Result<List<GitBranch>> = io {
@@ -537,6 +621,48 @@ class OpenHandsRepository(
     suspend fun activateLlmProfile(name: String): Result<Unit> = io {
         api.activateLlmProfile(name).bodyOrNullOrThrow()
         Unit
+    }
+
+    suspend fun saveLlmProfile(name: String, model: String, baseUrl: String? = null, apiKey: String? = null): Result<Unit> = io {
+        val body = buildMap<String, Any?> {
+            put("model", model.trim())
+            put("custom_model", model.trim())
+            if (!baseUrl.isNullOrBlank()) put("base_url", baseUrl.trim())
+            if (!apiKey.isNullOrBlank()) put("api_key", apiKey.trim())
+        }
+        api.saveLlmProfile(name.trim(), body).bodyOrNullOrThrow()
+        Unit
+    }
+
+    suspend fun deleteLlmProfile(name: String): Result<Unit> = io {
+        api.deleteLlmProfile(name).bodyOrNullOrThrow()
+        Unit
+    }
+
+    suspend fun renameLlmProfile(name: String, newName: String): Result<Unit> = io {
+        api.renameLlmProfile(name, RenameProfileRequest(newName.trim())).bodyOrNullOrThrow()
+        Unit
+    }
+
+    suspend fun setGitProviderToken(provider: String, token: String): Result<Unit> = io {
+        val payload = mapOf(provider to ProviderTokenDto(token = token.trim()))
+        api.setGitProviderTokens(SetProviderTokensRequest(payload)).bodyOrNullOrThrow()
+        Unit
+    }
+
+    suspend fun clearGitProviderTokens(): Result<Unit> = io {
+        api.clearGitProviderTokens().bodyOrNullOrThrow()
+        Unit
+    }
+
+    /** Verified model catalog for dropdowns (GET /api/v1/config/models/search). */
+    suspend fun searchModels(query: String? = null): Result<List<LlmModel>> = io {
+        api.searchModels(query = query?.trim()?.ifEmpty { null }, verified = true, limit = 50)
+            .bodyOrThrow()
+            .items
+            .filterNotNull()
+            .filter { !it.id.isNullOrBlank() }
+            .map { LlmModel(it.id!!, it.provider, it.verified == true) }
     }
 
     /** Switches the LLM profile of a running conversation. */
@@ -639,6 +765,10 @@ class OpenHandsRepository(
         private const val KEY_API_KEY = "api_key"
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_SHOW_NOISE = "show_noise_events"
+        private const val KEY_GIT_USER_NAME = "git_user_name"
+        private const val KEY_GIT_USER_EMAIL = "git_user_email"
+        private const val KEY_MAX_BUDGET = "max_budget_per_task"
+        private const val KEY_THEME_MODE = "theme_mode"
         private const val PAGE_SIZE = 50
         private const val START_POLL_MS = 2_000L
         private const val START_TIMEOUT_MS = 10 * 60_000L

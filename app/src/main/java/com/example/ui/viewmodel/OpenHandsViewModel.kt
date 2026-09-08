@@ -40,8 +40,12 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import com.example.data.model.LlmModel
 import kotlinx.coroutines.launch
 
+
+/** Theme preference persisted in the app; mirrors webui appearance choices. */
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
 enum class HomeTab(val label: String) {
     HOME("Home"),
     CONVERSATIONS("Conversations"),
@@ -69,10 +73,16 @@ data class NewConversationForm(
     val showAdvanced: Boolean = false,
     val spanName: String = "",
     val tags: String = "",
+    /** Selected LLM profile for the new conversation; llmModel override wins when non-blank. */
+    val llmProfile: String? = null,
     val repoQuery: String = "",
     val repoProvider: String = "github",
     val repoResults: List<GitRepository> = emptyList(),
     val isSearchingRepos: Boolean = false,
+    val repoNextPageId: String? = null,
+    val isLoadingMoreRepos: Boolean = false,
+    val repoOrganizations: List<String> = emptyList(),
+    val selectedOrganization: String? = null,
     val branchResults: List<GitBranch> = emptyList(),
     val isLoadingBranches: Boolean = false,
     val suggestedTasks: List<SuggestedTask> = emptyList()
@@ -129,6 +139,16 @@ data class OpenHandsUiState(
     val apiKeyInput: String = "",
     val baseUrlInput: String = "",
     val isUsingBuildTimeKey: Boolean = false,
+    /** Git author used for commits made by the agent; mirrors webui Application settings. */
+    val gitUserNameInput: String = "",
+    val gitUserEmailInput: String = "",
+    /** Per-conversation spending cap in USD; blank = account default. */
+    val maxBudgetInput: String = "",
+    /** App theme selection. */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** Cached model catalog from GET /config/models/search for the model dropdown. */
+    val modelCatalog: List<LlmModel> = emptyList(),
+    val isLoadingModels: Boolean = false,
     val account: AccountInfo? = null,
     val accountError: String? = null,
     val isTestingConnection: Boolean = false,
@@ -157,6 +177,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
             baseUrlInput = repository.baseUrl,
             isUsingBuildTimeKey = repository.isUsingBuildTimeKey,
             showNoiseEvents = repository.showNoiseEvents,
+            themeMode = runCatching { ThemeMode.valueOf(repository.themeMode) }.getOrDefault(ThemeMode.SYSTEM),
             needsApiKey = repository.apiKey.isBlank()
         )
     )
@@ -200,16 +221,32 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repoSearchQuery.debounce(350).distinctUntilChanged().collect { q -> runRepoSearch(q) }
         }
+        _uiState.update {
+            it.copy(
+                gitUserNameInput = repository.gitUserName ?: "",
+                gitUserEmailInput = repository.gitUserEmail ?: "",
+                maxBudgetInput = repository.maxBudgetPerTask?.toString() ?: ""
+            )
+        }
         if (repository.apiKey.isNotBlank()) {
             refreshConversations()
             loadAccount()
+            viewModelScope.launch { loadModelCatalog() }
+            loadRepoOrganizations()
+            viewModelScope.launch { runRepoSearch("") }
         }
         startListPolling()
     }
 
     // ---------------------------------------------------------------- navigation
 
-    fun setTab(tab: HomeTab) = _uiState.update { it.copy(currentTab = tab, screenStack = emptyList()) }
+    fun setTab(tab: HomeTab) {
+        _uiState.update { it.copy(currentTab = tab, screenStack = emptyList()) }
+        if (tab == HomeTab.NEW && repository.apiKey.isNotBlank() && _uiState.value.form.repoResults.isEmpty()) {
+            loadRepoOrganizations()
+            viewModelScope.launch { runRepoSearch(_uiState.value.form.repoQuery) }
+        }
+    }
 
     fun openConversation(id: String) {
         _uiState.update { it.copy(screenStack = listOf(Screen.ConversationDetail(id)), detailError = null) }
@@ -389,18 +426,65 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun setRepoProvider(provider: String) {
-        updateForm { it.copy(repoProvider = provider, repoResults = emptyList()) }
+        updateForm { it.copy(repoProvider = provider, repoResults = emptyList(), repoNextPageId = null, selectedOrganization = null) }
+        viewModelScope.launch {
+            loadRepoOrganizations()
+            runRepoSearch(_uiState.value.form.repoQuery)
+        }
+    }
+
+    fun selectRepoOrganization(org: String?) {
+        updateForm { it.copy(selectedOrganization = org, repoResults = emptyList(), repoNextPageId = null) }
         viewModelScope.launch { runRepoSearch(_uiState.value.form.repoQuery) }
+    }
+
+    fun loadRepoOrganizations() {
+        if (repository.apiKey.isBlank()) return
+        viewModelScope.launch {
+            repository.getGitOrganizations()
+                .onSuccess { orgs -> updateForm { it.copy(repoOrganizations = orgs) } }
+        }
     }
 
     private suspend fun runRepoSearch(query: String) {
         if (repository.apiKey.isBlank()) return
         updateForm { it.copy(isSearchingRepos = true) }
-        repository.searchRepositories(query, _uiState.value.form.repoProvider)
-            .onSuccess { repos -> updateForm { it.copy(repoResults = repos, isSearchingRepos = false) } }
+        val form = _uiState.value.form
+        val effectiveQuery = if (!form.selectedOrganization.isNullOrBlank()) {
+            if (query.isBlank()) "${form.selectedOrganization}/" else "${form.selectedOrganization}/$query"
+        } else query
+        repository.searchRepositoriesPaged(effectiveQuery, form.repoProvider, pageId = null)
+            .onSuccess { (repos, next) ->
+                updateForm { it.copy(repoResults = repos, repoNextPageId = next, isSearchingRepos = false) }
+            }
             .onFailure { e -> updateForm { it.copy(isSearchingRepos = false) }; notify(e.friendlyMessage()) }
     }
 
+    fun loadMoreRepositories() {
+        val form = _uiState.value.form
+        val next = form.repoNextPageId ?: return
+        if (form.isLoadingMoreRepos) return
+        viewModelScope.launch {
+            updateForm { it.copy(isLoadingMoreRepos = true) }
+            val effectiveQuery = if (!form.selectedOrganization.isNullOrBlank()) {
+                if (form.repoQuery.isBlank()) "${form.selectedOrganization}/" else "${form.selectedOrganization}/${form.repoQuery}"
+            } else form.repoQuery
+            repository.searchRepositoriesPaged(effectiveQuery, form.repoProvider, pageId = next)
+                .onSuccess { (repos, newNext) ->
+                    updateForm {
+                        it.copy(
+                            repoResults = it.repoResults + repos,
+                            repoNextPageId = newNext,
+                            isLoadingMoreRepos = false
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    updateForm { it.copy(isLoadingMoreRepos = false) }
+                    notify(e.friendlyMessage())
+                }
+        }
+    }
     fun selectRepository(repo: GitRepository) {
         updateForm { it.copy(repository = repo.fullName, gitProvider = repo.provider, branch = "", branchResults = emptyList()) }
         loadBranches(repo.fullName, repo.provider, null)
@@ -444,6 +528,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                 title = form.title,
                 agentType = form.agentType,
                 llmModel = form.llmModel,
+                llmProfile = form.llmProfile,
                 observabilitySpanName = form.spanName,
                 observabilityTags = form.tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
             )
@@ -616,6 +701,19 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                 .onFailure { e -> _uiState.update { it.copy(isLoadingSandboxes = false) }; notify(e.friendlyMessage()) }
         }
     }
+    fun createSandbox(specId: String? = null) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingSandboxes = true) }
+            repository.createSandbox(specId)
+                .onSuccess { sb ->
+                    notify("Sandbox ${sb.id.take(8)} created")
+                    loadSandboxes()
+                }
+                .onFailure { notify(it.friendlyMessage()) }
+            _uiState.update { it.copy(isLoadingSandboxes = false) }
+        }
+    }
+
 
     // ------------------------------------------------------------------- secrets
 
@@ -672,6 +770,76 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** Publishes or unpublishes a conversation (webui "share" toggle). */
+    fun setConversationPublic(conversationId: String, public: Boolean) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isMutatingConversation = true) }
+            repository.setConversationPublic(conversationId, public)
+                .onSuccess { notify(if (public) "Conversation is now public" else "Conversation is private again") }
+                .onFailure { notify(it.friendlyMessage()) }
+            _uiState.update { it.copy(isMutatingConversation = false) }
+        }
+    }
+    fun createLlmProfile(name: String, model: String, baseUrl: String? = null, apiKey: String? = null) {
+        if (name.isBlank() || model.isBlank()) {
+            notify("Profile name and model are required.")
+            return
+        }
+        viewModelScope.launch {
+            repository.saveLlmProfile(name, model, baseUrl, apiKey)
+                .onSuccess {
+                    notify("Profile $name saved")
+                    loadLlmProfiles()
+                }
+                .onFailure { notify(it.friendlyMessage()) }
+        }
+    }
+
+    fun deleteLlmProfile(name: String) {
+        viewModelScope.launch {
+            repository.deleteLlmProfile(name)
+                .onSuccess {
+                    notify("Profile $name deleted")
+                    loadLlmProfiles()
+                }
+                .onFailure { notify(it.friendlyMessage()) }
+        }
+    }
+
+    fun renameLlmProfile(name: String, newName: String) {
+        if (newName.isBlank()) return
+        viewModelScope.launch {
+            repository.renameLlmProfile(name, newName)
+                .onSuccess {
+                    notify("Profile renamed to $newName")
+                    loadLlmProfiles()
+                }
+                .onFailure { notify(it.friendlyMessage()) }
+        }
+    }
+
+    fun setGitProviderToken(provider: String, token: String) {
+        if (token.isBlank()) return
+        viewModelScope.launch {
+            repository.setGitProviderToken(provider, token)
+                .onSuccess { notify("Git token saved for $provider") }
+                .onFailure { notify(it.friendlyMessage()) }
+        }
+    }
+
+    fun clearGitProviderTokens() {
+        viewModelScope.launch {
+            repository.clearGitProviderTokens()
+                .onSuccess { notify("Git provider tokens cleared") }
+                .onFailure { notify(it.friendlyMessage()) }
+        }
+    }
+
+    suspend fun downloadTrajectory(conversationId: String): Result<ByteArray> {
+        return repository.downloadTrajectory(conversationId)
+    }
+
+
     fun loadConversationSkills(conversationId: String) {
         viewModelScope.launch {
             repository.conversationSkills(conversationId)
@@ -686,16 +854,44 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun updateApiKeyInput(value: String) = _uiState.update { it.copy(apiKeyInput = value) }
     fun updateBaseUrlInput(value: String) = _uiState.update { it.copy(baseUrlInput = value) }
+    fun updateGitUserNameInput(value: String) = _uiState.update { it.copy(gitUserNameInput = value) }
+    fun updateGitUserEmailInput(value: String) = _uiState.update { it.copy(gitUserEmailInput = value) }
+    fun updateMaxBudgetInput(value: String) = _uiState.update { it.copy(maxBudgetInput = value.filter { c -> c.isDigit() || c == '.' }) }
+
+    fun setThemeMode(mode: ThemeMode) {
+        repository.themeMode = mode.name
+        _uiState.update { it.copy(themeMode = mode) }
+    }
+
+    /** Loads the verified model catalog for dropdowns; safe to call repeatedly. */
+    fun loadModelCatalog() {
+        if (_uiState.value.isLoadingModels) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingModels = true) }
+            repository.searchModels()
+                .onSuccess { models -> _uiState.update { it.copy(modelCatalog = models, isLoadingModels = false) } }
+                .onFailure { _uiState.update { it.copy(isLoadingModels = false) } }
+        }
+    }
 
     fun saveSettings() {
         val key = _uiState.value.apiKeyInput.trim()
         val url = _uiState.value.baseUrlInput.trim()
+        val gitName = _uiState.value.gitUserNameInput.trim()
+        val gitEmail = _uiState.value.gitUserEmailInput.trim()
+        val maxBudget = _uiState.value.maxBudgetInput.trim().toDoubleOrNull()
         repository.updateConfig(key, url)
+        repository.gitUserName = gitName.ifEmpty { null }
+        repository.gitUserEmail = gitEmail.ifEmpty { null }
+        repository.maxBudgetPerTask = maxBudget
         _uiState.update {
             it.copy(
                 apiKeyInput = repository.apiKey,
                 baseUrlInput = repository.baseUrl,
                 isUsingBuildTimeKey = repository.isUsingBuildTimeKey,
+                gitUserNameInput = gitName,
+                gitUserEmailInput = gitEmail,
+                maxBudgetInput = maxBudget?.toString() ?: "",
                 needsApiKey = repository.apiKey.isBlank(),
                 account = null,
                 accountError = null
@@ -706,6 +902,8 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         if (repository.apiKey.isNotBlank()) {
             loadAccount()
             refreshConversations()
+            loadRepoOrganizations()
+            viewModelScope.launch { runRepoSearch("") }
         }
     }
 

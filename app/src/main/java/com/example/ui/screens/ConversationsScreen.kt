@@ -62,7 +62,6 @@ import com.example.ui.components.ErrorBanner
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatCost
 import com.example.ui.components.formatRelativeTime
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 @Composable
 fun ConversationsScreen(
@@ -120,7 +119,7 @@ fun ConversationsScreen(
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
             modifier = Modifier.fillMaxWidth().testTag("conversations_search")
         )
 
@@ -132,7 +131,7 @@ fun ConversationsScreen(
                     onClick = { onStatusFilterChanged(null) },
                     label = { Text("All (${conversations.size})") },
                     shape = RoundedCornerShape(10.dp),
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f), selectedLabelColor = OpenHandsPrimaryDark)
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), selectedLabelColor = MaterialTheme.colorScheme.primary)
                 )
             }
             val options = listOf(
@@ -147,14 +146,14 @@ fun ConversationsScreen(
                         onClick = { onStatusFilterChanged(if (statusFilter == status) null else status) },
                         label = { Text("${status.label} ($count)") },
                         shape = RoundedCornerShape(10.dp),
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f), selectedLabelColor = OpenHandsPrimaryDark)
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), selectedLabelColor = MaterialTheme.colorScheme.primary)
                     )
                 }
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        if (isRefreshing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+        if (isRefreshing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
         if (error != null) {
             Spacer(Modifier.height(6.dp))
             ErrorBanner(error, actionLabel = "Retry", onAction = onRefresh)
@@ -249,13 +248,13 @@ fun ConversationCard(
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     if (!conversation.repository.isNullOrBlank()) {
-                        Icon(Icons.Default.Code, contentDescription = null, tint = OpenHandsPrimaryDark, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
                             conversation.repository + (conversation.branch?.let { "@$it" } ?: ""),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
-                            color = OpenHandsPrimaryDark,
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)

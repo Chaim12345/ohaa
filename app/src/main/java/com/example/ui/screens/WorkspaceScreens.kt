@@ -48,7 +48,6 @@ import com.example.ui.components.CodeBlock
 import com.example.ui.components.EmptyState
 import com.example.ui.components.ErrorBanner
 import com.example.ui.components.Pill
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusReady
 import com.example.ui.theme.StatusWaiting
@@ -89,7 +88,7 @@ fun FilesScreen(
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary)
             }
         }
-        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
         state.error?.let { ErrorBanner(it, modifier = Modifier.padding(12.dp), actionLabel = "Retry", onAction = { onBrowse(state.path) }) }
 
         if (state.openFilePath != null && state.openFileContent != null) {
@@ -134,7 +133,7 @@ fun FilesScreen(
                     Icon(
                         if (isDir) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
                         contentDescription = null,
-                        tint = if (isDir) OpenHandsPrimaryDark else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(10.dp))
@@ -165,7 +164,7 @@ fun ChangesScreen(
         ) {
             IconButton(onClick = onReload) { Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = MaterialTheme.colorScheme.primary) }
         }
-        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+        if (state.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
 
         val diff = state.selectedDiff
         if (diff != null) {

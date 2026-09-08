@@ -64,9 +64,6 @@ import com.example.ui.components.StatMetricCard
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.formatCost
 import com.example.ui.components.formatRelativeTime
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.OpenHandsSecondaryDark
-import com.example.ui.theme.OpenHandsTertiaryDark
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusWaiting
 import com.example.ui.theme.StatusWorking
@@ -175,11 +172,11 @@ fun HomeScreen(
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                StatMetricCard("Loaded", conversations.size.toString(), "conversations", Icons.AutoMirrored.Filled.List, OpenHandsPrimaryDark, Modifier.weight(1f))
+                StatMetricCard("Loaded", conversations.size.toString(), "conversations", Icons.AutoMirrored.Filled.List, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
                 StatMetricCard(
                     "Spend", formatCost(totalCost),
                     account?.credits?.let { "credits left: $it" } ?: "across loaded conversations",
-                    Icons.Default.AttachMoney, OpenHandsTertiaryDark, Modifier.weight(1f)
+                    Icons.Default.AttachMoney, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f)
                 )
             }
         }
@@ -240,9 +237,9 @@ fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(templates, key = { it.id }) { t ->
                         Surface(
-                            color = OpenHandsSecondaryDark.copy(alpha = 0.08f),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, OpenHandsSecondaryDark.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)),
                             modifier = Modifier.clickable { onSelectTemplate(t) }.testTag("home_template_${t.id}")
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp).width(160.dp)) {

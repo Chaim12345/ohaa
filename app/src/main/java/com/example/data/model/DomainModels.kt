@@ -301,6 +301,9 @@ data class CustomSecret(val name: String, val description: String?)
 
 data class LlmProfile(val name: String, val model: String?, val baseUrl: String?, val apiKeySet: Boolean, val isActive: Boolean)
 
+/** Model catalog entry from GET /api/v1/config/models/search. */
+data class LlmModel(val id: String, val provider: String?, val verified: Boolean)
+
 data class Skill(val name: String, val type: String?, val source: String?, val triggers: List<String>, val content: String?)
 
 data class AccountInfo(

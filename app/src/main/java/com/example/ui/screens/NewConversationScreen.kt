@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -71,9 +72,11 @@ import com.example.data.model.StartTaskStatus
 import com.example.data.model.SuggestedTask
 import com.example.ui.components.InfoCard
 import com.example.ui.components.SectionTitle
-import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.components.DropdownSelector
 import com.example.ui.theme.StatusError
 import com.example.ui.viewmodel.NewConversationForm
+import com.example.data.model.LlmModel
+import com.example.data.model.LlmProfile
 
 @Composable
 fun NewConversationScreen(
@@ -81,11 +84,17 @@ fun NewConversationScreen(
     templates: List<PromptTemplate>,
     startProgress: StartTaskProgress?,
     hasApiKey: Boolean,
+    llmProfiles: List<LlmProfile> = emptyList(),
+    modelCatalog: List<LlmModel> = emptyList(),
+    onLoadProfiles: () -> Unit = {},
+    onLoadModels: () -> Unit = {},
     onFormChange: ((NewConversationForm) -> NewConversationForm) -> Unit,
     onRepoQueryChange: (String) -> Unit,
     onRepoProviderChange: (String) -> Unit,
+    onLoadMoreRepos: () -> Unit = {},
+    onSelectRepoOrg: (String?) -> Unit = {},
     onSelectRepository: (GitRepository) -> Unit,
-    onSearchBranches: (String) -> Unit,
+    onSearchBranches: (String) -> Unit = {},
     onSelectTemplate: (PromptTemplate) -> Unit,
     onSelectSuggestedTask: (SuggestedTask) -> Unit,
     onLoadSuggestedTasks: () -> Unit,
@@ -104,9 +113,9 @@ fun NewConversationScreen(
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(OpenHandsPrimaryDark.copy(alpha = 0.15f)),
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = OpenHandsPrimaryDark, modifier = Modifier.size(22.dp)) }
+            ) { Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("New conversation", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -157,13 +166,13 @@ fun NewConversationScreen(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(form.suggestedTasks.take(20)) { task ->
                     Surface(
-                        color = OpenHandsPrimaryDark.copy(alpha = 0.08f),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.clickable { onSelectSuggestedTask(task) }
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp).width(220.dp)) {
                             Text(task.title, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${task.repo} #${task.issueNumber}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = OpenHandsPrimaryDark)
+                            Text("${task.repo} #${task.issueNumber}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -181,7 +190,7 @@ fun NewConversationScreen(
             minLines = 5,
             maxLines = 12,
             shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
             modifier = Modifier.fillMaxWidth().testTag("prompt_input")
         )
 
@@ -193,7 +202,7 @@ fun NewConversationScreen(
             value = form.repository,
             onValueChange = { v -> onFormChange { it.copy(repository = v, branch = "", gitProvider = null, branchResults = emptyList()) } },
             placeholder = { Text("owner/repo") },
-            leadingIcon = { Icon(Icons.Default.Code, contentDescription = null, tint = OpenHandsPrimaryDark) },
+            leadingIcon = { Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             trailingIcon = {
                 IconButton(onClick = { showRepoPicker = true; onRepoQueryChange(form.repository) }, enabled = hasApiKey) {
                     Icon(Icons.Default.Search, contentDescription = "Browse repositories")
@@ -201,7 +210,7 @@ fun NewConversationScreen(
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
             modifier = Modifier.fillMaxWidth().testTag("repo_input")
         )
         if (form.repository.isNotBlank()) {
@@ -210,7 +219,7 @@ fun NewConversationScreen(
                 value = form.branch,
                 onValueChange = { v -> onFormChange { it.copy(branch = v) } },
                 placeholder = { Text("Branch (default branch if empty)") },
-                leadingIcon = { Icon(Icons.Default.AccountTree, contentDescription = null, tint = OpenHandsPrimaryDark) },
+                leadingIcon = { Icon(Icons.Default.AccountTree, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                 trailingIcon = {
                     if (form.isLoadingBranches) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     else IconButton(onClick = { showBranchPicker = true; onSearchBranches("") }, enabled = hasApiKey) {
@@ -219,7 +228,7 @@ fun NewConversationScreen(
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth().testTag("branch_input")
             )
             if (form.branchResults.isNotEmpty()) {
@@ -232,7 +241,7 @@ fun NewConversationScreen(
                             label = { Text(b.name, fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                             leadingIcon = if (b.isProtected) ({ Icon(Icons.Default.Lock, contentDescription = "protected", modifier = Modifier.size(12.dp)) }) else null,
                             shape = RoundedCornerShape(8.dp),
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f), selectedLabelColor = OpenHandsPrimaryDark)
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), selectedLabelColor = MaterialTheme.colorScheme.primary)
                         )
                     }
                 }
@@ -272,7 +281,21 @@ fun NewConversationScreen(
             Icon(if (form.showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (form.showAdvanced) {
-            val fieldColors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline)
+            val fieldColors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline)
+            DropdownSelector(
+                label = "LLM profile",
+                options = llmProfiles,
+                selected = llmProfiles.firstOrNull { it.name == form.llmProfile },
+                optionLabel = { it.name },
+                optionSubtitle = { listOfNotNull(it.model, if (it.isActive) "default" else null).joinToString(" · ") },
+                enabled = llmProfiles.isNotEmpty(),
+                emptyText = if (llmProfiles.isEmpty()) "No profiles loaded" else "Account default",
+                onSelect = { p ->
+                    onFormChange { it.copy(llmProfile = p.name, llmModel = p.model ?: "") }
+                },
+                modifier = Modifier.testTag("llm_profile_dropdown")
+            )
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = form.title, onValueChange = { v -> onFormChange { it.copy(title = v) } },
                 label = { Text("Title") }, placeholder = { Text("Auto-generated if empty") },
@@ -303,12 +326,12 @@ fun NewConversationScreen(
             onClick = onStart,
             enabled = form.prompt.isNotBlank() && startProgress == null && hasApiKey,
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("start_conversation_button")
         ) {
-            Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = Color.White)
+            Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
             Spacer(Modifier.width(8.dp))
-            Text("Start conversation", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Start conversation", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -319,8 +342,14 @@ fun NewConversationScreen(
             provider = form.repoProvider,
             results = form.repoResults,
             isSearching = form.isSearchingRepos,
+            hasMore = form.repoNextPageId != null,
+            isLoadingMore = form.isLoadingMoreRepos,
+            organizations = form.repoOrganizations,
+            selectedOrg = form.selectedOrganization,
             onQueryChange = onRepoQueryChange,
             onProviderChange = onRepoProviderChange,
+            onSelectOrg = onSelectRepoOrg,
+            onLoadMore = onLoadMoreRepos,
             onSelect = { onSelectRepository(it); showRepoPicker = false },
             onDismiss = { showRepoPicker = false }
         )
@@ -343,8 +372,14 @@ private fun RepositoryPickerDialog(
     provider: String,
     results: List<GitRepository>,
     isSearching: Boolean,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    organizations: List<String> = emptyList(),
+    selectedOrg: String? = null,
     onQueryChange: (String) -> Unit,
     onProviderChange: (String) -> Unit,
+    onSelectOrg: (String?) -> Unit = {},
+    onLoadMore: () -> Unit = {},
     onSelect: (GitRepository) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -363,9 +398,28 @@ private fun RepositoryPickerDialog(
                         )
                     }
                 }
+                if (organizations.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        item {
+                            FilterChip(
+                                selected = selectedOrg == null,
+                                onClick = { onSelectOrg(null) },
+                                label = { Text("All orgs", fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                        items(organizations) { org ->
+                            FilterChip(
+                                selected = selectedOrg == org,
+                                onClick = { onSelectOrg(if (selectedOrg == org) null else org) },
+                                label = { Text(org, fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = query, onValueChange = onQueryChange, singleLine = true,
-                    placeholder = { Text("Search your repositories") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth().testTag("repo_search_input")
                 )
@@ -391,6 +445,22 @@ private fun RepositoryPickerDialog(
                                     listOfNotNull(repo.provider, repo.mainBranch?.let { "default: $it" }, repo.stars?.let { "★ $it" }).joinToString(" · "),
                                     fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        }
+                    }
+                    if (hasMore) {
+                        Spacer(Modifier.height(8.dp))
+                        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                            if (isLoadingMore) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                OutlinedButton(
+                                    onClick = onLoadMore,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth().testTag("repo_load_more")
+                                ) {
+                                    Text("Load more repositories", fontSize = 12.sp)
+                                }
                             }
                         }
                     }

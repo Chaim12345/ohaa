@@ -27,6 +27,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +43,7 @@ import com.example.ui.screens.SandboxesScreen
 import com.example.ui.screens.SecretsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.viewmodel.ThemeMode
 import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.viewmodel.HomeTab
 import com.example.ui.viewmodel.OpenHandsViewModel
@@ -49,18 +53,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MyApplicationTheme { OpenHandsApp() } }
+        setContent { OpenHandsApp() }
     }
 }
 
 @Composable
 fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
-    val uiState by viewModel.uiState.collectAsState()
-    val conversations by viewModel.conversations.collectAsState()
-    val templates by viewModel.templates.collectAsState()
-    val events by viewModel.events.collectAsState()
-    val selectedConversation by viewModel.selectedConversation.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val templates by viewModel.templates.collectAsStateWithLifecycle()
+    val events by viewModel.events.collectAsStateWithLifecycle()
+    val selectedConversation by viewModel.selectedConversation.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val darkTheme = when (uiState.themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+
+    MyApplicationTheme(darkTheme = darkTheme) {
 
     LaunchedEffect(uiState.notification) {
         uiState.notification?.let { msg ->
@@ -101,7 +113,12 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .animateContentSize()
+        ) {
             when (val screen = uiState.topScreen) {
                 is Screen.ConversationDetail -> ConversationDetailScreen(
                     conversation = selectedConversation,
@@ -111,6 +128,9 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                     isMutating = uiState.isMutatingConversation,
                     showNoise = uiState.showNoiseEvents,
                     error = uiState.detailError,
+                    modelCatalog = uiState.modelCatalog,
+                    isLoadingModels = uiState.isLoadingModels,
+                    onLoadModels = { viewModel.loadModelCatalog() },
                     onBack = { viewModel.goBack() },
                     onRefresh = { viewModel.refreshDetail() },
                     onSend = { viewModel.sendMessage(it) },
@@ -118,6 +138,8 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                     onResumeSandbox = { viewModel.resumeSandbox(it) },
                     onRename = { viewModel.renameConversation(screen.conversationId, it) },
                     onDelete = { viewModel.deleteConversation(screen.conversationId) },
+                    onSetPublic = { viewModel.setConversationPublic(screen.conversationId, it) },
+                    onDownloadTrajectory = { viewModel.downloadTrajectory(screen.conversationId) },
                     onOpenFiles = { viewModel.openFiles(screen.conversationId) },
                     onOpenChanges = { viewModel.openChanges(screen.conversationId) },
                     onToggleNoise = { viewModel.toggleNoiseEvents() },
@@ -160,6 +182,7 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                     isMutating = uiState.isMutatingConversation,
                     onBack = { viewModel.goBack() },
                     onRefresh = { viewModel.loadSandboxes() },
+                    onCreateSandbox = { viewModel.createSandbox(it) },
                     onPause = { viewModel.pauseSandbox(it) },
                     onResume = { viewModel.resumeSandbox(it) },
                     onDelete = { viewModel.deleteSandbox(it) },
@@ -205,9 +228,15 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                         templates = templates,
                         startProgress = uiState.startProgress,
                         hasApiKey = !uiState.needsApiKey,
+                        llmProfiles = uiState.llmProfiles,
+                        modelCatalog = uiState.modelCatalog,
+                        onLoadProfiles = { viewModel.loadLlmProfiles() },
+                        onLoadModels = { viewModel.loadModelCatalog() },
                         onFormChange = { viewModel.updateForm(it) },
                         onRepoQueryChange = { viewModel.searchRepositories(it) },
                         onRepoProviderChange = { viewModel.setRepoProvider(it) },
+                        onLoadMoreRepos = { viewModel.loadMoreRepositories() },
+                        onSelectRepoOrg = { viewModel.selectRepoOrganization(it) },
                         onSelectRepository = { viewModel.selectRepository(it) },
                         onSearchBranches = { q -> viewModel.loadBranches(uiState.form.repository, uiState.form.gitProvider, q) },
                         onSelectTemplate = { viewModel.applyTemplate(it) },
@@ -222,12 +251,20 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                         apiKey = uiState.apiKeyInput,
                         baseUrl = uiState.baseUrlInput,
                         isUsingBuildTimeKey = uiState.isUsingBuildTimeKey,
+                        gitUserName = uiState.gitUserNameInput,
+                        gitUserEmail = uiState.gitUserEmailInput,
+                        maxBudget = uiState.maxBudgetInput,
+                        themeMode = uiState.themeMode,
                         account = uiState.account,
                         accountError = uiState.accountError,
                         isTesting = uiState.isTestingConnection,
                         showNoiseEvents = uiState.showNoiseEvents,
                         onApiKeyChanged = { viewModel.updateApiKeyInput(it) },
                         onBaseUrlChanged = { viewModel.updateBaseUrlInput(it) },
+                        onGitUserNameChanged = { viewModel.updateGitUserNameInput(it) },
+                        onGitUserEmailChanged = { viewModel.updateGitUserEmailInput(it) },
+                        onMaxBudgetChanged = { viewModel.updateMaxBudgetInput(it) },
+                        onThemeChanged = { viewModel.setThemeMode(it) },
                         onSave = { viewModel.saveSettings() },
                         onTestConnection = { viewModel.loadAccount() },
                         onToggleNoise = { viewModel.toggleNoiseEvents() },
@@ -236,10 +273,19 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                         onOpenSecrets = { viewModel.openSecrets() },
                         llmProfiles = uiState.llmProfiles,
                         onLoadProfiles = { viewModel.loadLlmProfiles() },
-                        onActivateProfile = { viewModel.activateLlmProfile(it) }
+                        onActivateProfile = { viewModel.activateLlmProfile(it) },
+                        onCreateProfile = { n, m, u, k -> viewModel.createLlmProfile(n, m, u, k) },
+                        onDeleteProfile = { viewModel.deleteLlmProfile(it) },
+                        onRenameProfile = { old, newName -> viewModel.renameLlmProfile(old, newName) },
+                        onSetGitProviderToken = { p, t -> viewModel.setGitProviderToken(p, t) },
+                        onClearGitProviderTokens = { viewModel.clearGitProviderTokens() },
+                        modelCatalog = uiState.modelCatalog,
+                        isLoadingModels = uiState.isLoadingModels,
+                        onLoadModels = { viewModel.loadModelCatalog() }
                     )
                 }
             }
         }
+    }
     }
 }

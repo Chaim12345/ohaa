@@ -16,9 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -47,7 +50,6 @@ import com.example.ui.components.EmptyState
 import com.example.ui.components.LinkRow
 import com.example.ui.components.SandboxBadge
 import com.example.ui.components.formatRelativeTime
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 @Composable
 fun SandboxesScreen(
@@ -57,6 +59,7 @@ fun SandboxesScreen(
     isMutating: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onCreateSandbox: (String?) -> Unit = {},
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -64,8 +67,8 @@ fun SandboxesScreen(
     modifier: Modifier = Modifier
 ) {
     var deleteTarget by remember { mutableStateOf<Sandbox?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
-
     Column(modifier = modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
@@ -74,10 +77,13 @@ fun SandboxesScreen(
                     Text("Sandboxes", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
                     Text("${sandboxes.size} total · ${sandboxes.count { it.status == SandboxStatus.RUNNING }} running", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                IconButton(onClick = { showCreateDialog = true }, enabled = !isLoading && !isMutating, modifier = Modifier.testTag("create_sandbox_button")) {
+                    Icon(Icons.Default.Add, contentDescription = "New sandbox", tint = MaterialTheme.colorScheme.primary)
+                }
                 IconButton(onClick = onRefresh, enabled = !isLoading) { Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary) }
             }
         }
-        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = OpenHandsPrimaryDark)
+        if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = MaterialTheme.colorScheme.primary)
 
         if (sandboxes.isEmpty() && !isLoading) {
             EmptyState("No sandboxes", "Sandboxes are created when you start a conversation and are removed when it is deleted.")
@@ -137,6 +143,39 @@ fun SandboxesScreen(
             confirmLabel = "Delete",
             onDismiss = { deleteTarget = null },
             onConfirm = { onDelete(sb.id); deleteTarget = null }
+        )
+    }
+    if (showCreateDialog) {
+        var specId by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("Create sandbox") },
+            text = {
+                Column {
+                    Text("Create an isolated sandbox container workspace on OpenHands Cloud.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = specId,
+                        onValueChange = { specId = it },
+                        label = { Text("Custom spec ID (optional)") },
+                        placeholder = { Text("Leave blank for default") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("sandbox_spec_input")
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCreateDialog = false
+                        onCreateSandbox(specId.trim().ifEmpty { null })
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") }
+            }
         )
     }
 }
