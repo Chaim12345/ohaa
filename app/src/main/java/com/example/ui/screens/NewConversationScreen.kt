@@ -25,10 +25,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,9 +60,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import com.example.ui.components.Pill
+import com.example.ui.theme.StatusReady
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,6 +111,7 @@ fun NewConversationScreen(
 ) {
     var showRepoPicker by remember { mutableStateOf(false) }
     var showBranchPicker by remember { mutableStateOf(false) }
+    var showModelPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(hasApiKey) {
         if (hasApiKey) {
@@ -117,17 +123,13 @@ fun NewConversationScreen(
 
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("New conversation", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                Text("The agent runs in an OpenHands Cloud sandbox", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        Text(
+            "Let's Start Building!",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text("The agent runs in an OpenHands Cloud sandbox", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         if (!hasApiKey) {
             Spacer(Modifier.height(14.dp))
@@ -192,7 +194,7 @@ fun NewConversationScreen(
         OutlinedTextField(
             value = form.prompt,
             onValueChange = { v -> onFormChange { it.copy(prompt = v) } },
-            placeholder = { Text("Describe what the agent should do. Be specific about the outcome you want and how to verify it.") },
+            placeholder = { Text("What do you want to build?") },
             minLines = 5,
             maxLines = 12,
             shape = RoundedCornerShape(14.dp),
@@ -203,6 +205,26 @@ fun NewConversationScreen(
         // Repository + branch
         Spacer(Modifier.height(18.dp))
         SectionTitle("Repository (optional)")
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { showRepoPicker = true; onRepoQueryChange(form.repository) },
+                enabled = hasApiKey,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.testTag("open_repository_button")
+            ) {
+                Icon(Icons.Default.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Open Repository", fontSize = 12.sp)
+            }
+            if (form.repository.isNotBlank()) {
+                Pill(
+                    text = form.repository + (form.branch?.let { "@$it" } ?: ""),
+                    color = MaterialTheme.colorScheme.primary,
+                    icon = Icons.Default.Code
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = form.repository,
@@ -311,7 +333,22 @@ fun NewConversationScreen(
             OutlinedTextField(
                 value = form.llmModel, onValueChange = { v -> onFormChange { it.copy(llmModel = v) } },
                 label = { Text("LLM model override") }, placeholder = { Text("e.g. anthropic/claude-sonnet-4-5") },
-                singleLine = true, shape = RoundedCornerShape(12.dp), colors = fieldColors, modifier = Modifier.fillMaxWidth()
+                singleLine = true, shape = RoundedCornerShape(12.dp), colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            if (modelCatalog.isEmpty()) onLoadModels()
+                            showModelPicker = true
+                        },
+                        modifier = Modifier.testTag("model_picker_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Browse verified models",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
@@ -367,6 +404,17 @@ fun NewConversationScreen(
             onSearch = onSearchBranches,
             onSelect = { onFormChange { f -> f.copy(branch = it.name) }; showBranchPicker = false },
             onDismiss = { showBranchPicker = false }
+        )
+    }
+    if (showModelPicker) {
+        ModelPickerDialog(
+            models = modelCatalog,
+            selectedModel = form.llmModel,
+            onSelect = { m ->
+                onFormChange { it.copy(llmModel = m.id) }
+                showModelPicker = false
+            },
+            onDismiss = { showModelPicker = false }
         )
     }
     startProgress?.let { StartProgressDialog(it, onCancel = onCancelStart, onDismissError = onDismissStartError) }
@@ -472,6 +520,79 @@ private fun RepositoryPickerDialog(
                     }
                 }
             }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun ModelPickerDialog(
+    models: List<LlmModel>,
+    selectedModel: String,
+    onSelect: (LlmModel) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    var provider by remember { mutableStateOf<String?>(null) }
+    val providers = remember(models) { models.mapNotNull { it.provider }.distinct().sorted() }
+    val filtered = remember(models, query, provider) {
+        models.filter { m ->
+            (provider == null || m.provider == provider) &&
+                (query.isBlank() || m.id.contains(query.trim(), ignoreCase = true))
+}
+}
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose an LLM model") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    label = { Text("Search verified models") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("model_search_input")
+    )
+                if (providers.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        item {
+                            FilterChip(
+                                selected = provider == null,
+                                onClick = { provider = null },
+                                label = { Text("All", fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+    )
+}
+                        items(providers) { p ->
+                            FilterChip(
+                                selected = provider == p,
+                                onClick = { provider = if (provider == p) null else p },
+                                label = { Text(p, fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+    )
+}
+}
+}
+                Spacer(Modifier.height(8.dp))
+                Column(modifier = Modifier.height(280.dp).verticalScroll(rememberScrollState())) {
+                    if (filtered.isEmpty()) {
+                        Text("No models match. The catalog holds verified models only.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+                    filtered.forEach { m ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable { onSelect(m) }.padding(vertical = 8.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(m.id, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface)
+                                if (!m.provider.isNullOrBlank()) Text(m.provider, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+                            if (m.verified) Icon(Icons.Default.Check, contentDescription = "verified", tint = StatusReady, modifier = Modifier.size(14.dp))
+                            if (m.id == selectedModel) Pill(text = "current", color = MaterialTheme.colorScheme.primary, icon = null)
+}
+}
+}
+}
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
     )

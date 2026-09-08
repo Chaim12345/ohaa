@@ -393,6 +393,14 @@ fun SettingsScreen(
         LinkRow("Install the GitHub app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/apps/openhands"))) }
         LinkRow("Install the GitLab app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://docs.openhands.dev/openhands/usage/cloud/gitlab-installation"))) }
         LinkRow("Install the Bitbucket app") { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://docs.openhands.dev/openhands/usage/cloud/bitbucket-installation"))) }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "OpenHands Cloud for Android ${com.example.BuildConfig.VERSION_NAME}",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(24.dp))
     }
     if (showAddProfile) {

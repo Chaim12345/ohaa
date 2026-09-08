@@ -258,6 +258,12 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         browseFiles(conversationId, null)
     }
 
+    /** Opens the Files screen directly on a file (web file-chip "View" action). */
+    fun openFileInFiles(conversationId: String, path: String) {
+        _uiState.update { it.copy(screenStack = it.screenStack + Screen.Files(conversationId)) }
+        openFile(conversationId, path)
+    }
+
     fun openChanges(conversationId: String) {
         viewModelScope.launch {
             val root = repository.conversationFlow(conversationId).firstOrNull()?.defaultRepoRoot

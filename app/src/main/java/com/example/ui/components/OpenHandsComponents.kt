@@ -395,7 +395,11 @@ private fun styleFor(event: AgentEvent): EventStyle {
 }
 
 @Composable
-fun EventCard(event: AgentEvent, modifier: Modifier = Modifier) {
+fun EventCard(
+    event: AgentEvent,
+    modifier: Modifier = Modifier,
+    onOpenFile: (String) -> Unit = {}
+) {
     if (event.category == EventCategory.USER_MESSAGE) {
         UserMessageBubble(event, modifier)
         return
@@ -464,6 +468,35 @@ fun EventCard(event: AgentEvent, modifier: Modifier = Modifier) {
             if (!event.body.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(event.body, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 18.sp)
+            }
+
+            if (!event.filePath.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onOpenFile(event.filePath) }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            event.filePath,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("View", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "View file", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                    }
+                }
             }
 
             if (hasDetails) {

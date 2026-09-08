@@ -140,6 +140,7 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
                     onDelete = { viewModel.deleteConversation(screen.conversationId) },
                     onSetPublic = { viewModel.setConversationPublic(screen.conversationId, it) },
                     onDownloadTrajectory = { viewModel.downloadTrajectory(screen.conversationId) },
+                    onOpenFile = { viewModel.openFileInFiles(screen.conversationId, it) },
                     onOpenFiles = { viewModel.openFiles(screen.conversationId) },
                     onOpenChanges = { viewModel.openChanges(screen.conversationId) },
                     onToggleNoise = { viewModel.toggleNoiseEvents() },

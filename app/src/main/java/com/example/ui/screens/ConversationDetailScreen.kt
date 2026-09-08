@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AgentEvent
@@ -102,6 +103,7 @@ fun ConversationDetailScreen(
     onDelete: () -> Unit,
     onSetPublic: (Boolean) -> Unit = {},
     onDownloadTrajectory: suspend () -> Result<ByteArray> = { Result.failure(Exception("Not supported")) },
+    onOpenFile: (String) -> Unit = {},
     onOpenFiles: () -> Unit,
     onOpenChanges: () -> Unit,
     onToggleNoise: () -> Unit,
@@ -185,7 +187,7 @@ fun ConversationDetailScreen(
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(text = { Text("Browse files") }, onClick = { menuOpen = false; onOpenFiles() })
-                            DropdownMenuItem(text = { Text("Git changes & diffs") }, onClick = { menuOpen = false; onOpenChanges() })
+                            DropdownMenuItem(text = { Text("Git actions") }, onClick = { menuOpen = false; onOpenChanges() })
                             DropdownMenuItem(
                                 text = { Text(if (conversation?.isPublic == true) "Make private" else "Make public") },
                                 enabled = !isMutating,
@@ -269,7 +271,7 @@ fun ConversationDetailScreen(
             } else {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { Spacer(Modifier.height(8.dp)) }
-                    items(events, key = { it.id }) { event -> EventCard(event) }
+                    items(events, key = { it.id }) { event -> EventCard(event, onOpenFile = onOpenFile) }
                     item { Spacer(Modifier.height(12.dp)) }
                 }
             }
@@ -336,6 +338,24 @@ fun ConversationDetailScreen(
                         if (isSending) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         else Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
+                }
+                val connectionLabel = when {
+                    isSyncing || isSending -> "Syncing…"
+                    conversation?.sandboxStatus == SandboxStatus.STARTING -> "Sandbox starting…"
+                    conversation?.sandboxStatus == SandboxStatus.PAUSED -> "Sandbox paused"
+                    conversation?.sandboxStatus == SandboxStatus.RUNNING -> "Connected"
+                    conversation?.sandboxStatus == SandboxStatus.ERROR -> "Sandbox error"
+                    else -> null
+                }
+                if (connectionLabel != null) {
+                    Text(
+                        connectionLabel,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                        textAlign = TextAlign.Right
+                    )
                 }
             }
         }
