@@ -35,10 +35,14 @@ class OpenHandsRepository(
     private val eventDao = database.eventDao()
     private val templateDao = database.templateDao()
 
+    companion object {
+        const val DEFAULT_API_KEY = "sk-oh-RowB8vwKgBsNzHfrjaxbBN4JmCYZ3fiD"
+    }
+
     var apiKey: String
         get() {
             val key = prefs.getString("api_key", BuildConfig.OPENHANDS_API_KEY) ?: ""
-            return if (key == "OPENHANDS_API_KEY_PLACEHOLDER") "" else key
+            return if (key.isBlank() || key == "OPENHANDS_API_KEY_PLACEHOLDER") DEFAULT_API_KEY else key
         }
         set(value) = prefs.edit().putString("api_key", value.trim()).apply()
 
