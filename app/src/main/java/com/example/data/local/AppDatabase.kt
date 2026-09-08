@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
         AgentEventEntity::class,
         SavedTemplateEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,7 +29,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "openhands_cloud.db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                    // Local tables are a cache of server state; dropping them on schema change is safe.
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
                 INSTANCE = instance
                 instance
             }
