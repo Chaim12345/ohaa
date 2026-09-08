@@ -30,6 +30,7 @@ data class OpenHandsUiState(
     val selectedConversationId: String? = null,
     val searchQuery: String = "",
     val filterStatus: ConversationStatus? = null,
+    val filterEventKind: String? = null,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val isSendingMessage: Boolean = false,
@@ -38,6 +39,8 @@ data class OpenHandsUiState(
     val notificationMessage: String? = null,
     val newTaskPrompt: String = "",
     val newTaskRepo: String = "",
+    val newTaskSpanName: String = "",
+    val newTaskTags: String = "mobile,android",
     val selectedTemplate: PromptTemplate? = null,
     val apiKey: String = "",
     val baseUrl: String = "https://app.all-hands.dev"
@@ -107,12 +110,29 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = _uiState.value.copy(filterStatus = status)
     }
 
+    fun setEventKindFilter(kind: String?) {
+        _uiState.value = _uiState.value.copy(filterEventKind = kind)
+        _uiState.value.selectedConversationId?.let { id ->
+            viewModelScope.launch {
+                repository.refreshEvents(id, kind)
+            }
+        }
+    }
+
     fun updateNewTaskPrompt(prompt: String) {
         _uiState.value = _uiState.value.copy(newTaskPrompt = prompt)
     }
 
     fun updateNewTaskRepo(repo: String) {
         _uiState.value = _uiState.value.copy(newTaskRepo = repo)
+    }
+
+    fun updateNewTaskSpanName(spanName: String) {
+        _uiState.value = _uiState.value.copy(newTaskSpanName = spanName)
+    }
+
+    fun updateNewTaskTags(tags: String) {
+        _uiState.value = _uiState.value.copy(newTaskTags = tags)
     }
 
     fun applyTemplate(template: PromptTemplate) {
@@ -183,7 +203,16 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val repo = _uiState.value.newTaskRepo.trim().ifEmpty { null }
-            val result = repository.createConversation(prompt, repo)
+            val span = _uiState.value.newTaskSpanName.trim().ifEmpty { null }
+            val tagList = _uiState.value.newTaskTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
+            val result = repository.createConversation(
+                prompt = prompt,
+                repository = repo,
+                spanName = span,
+                tags = tagList,
+                metadata = mapOf("client" to "android_cloud_app", "version" to "1.0")
+            )
             _uiState.value = _uiState.value.copy(isLoading = false)
 
             if (result.isSuccess) {
@@ -191,6 +220,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.value = _uiState.value.copy(
                     newTaskPrompt = "",
                     newTaskRepo = "",
+                    newTaskSpanName = "",
                     selectedTemplate = null,
                     notificationMessage = "Task launched in OpenHands sandbox!"
                 )
@@ -213,6 +243,18 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            repository.deleteConversation(conversationId)
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                selectedConversationId = null,
+                notificationMessage = "Conversation deleted"
+            )
+        }
+    }
+
     private fun observeConversationEvents(conversationId: String) {
         eventObservationJob?.cancel()
         pollingJob?.cancel()
@@ -225,7 +267,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
 
         // Pull latest from cloud API
         viewModelScope.launch {
-            repository.refreshEvents(conversationId)
+            repository.refreshEvents(conversationId, _uiState.value.filterEventKind)
         }
 
         // Auto polling for live conversation
@@ -233,7 +275,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
             while (true) {
                 delay(8000)
                 if (_uiState.value.selectedConversationId == conversationId) {
-                    repository.refreshEvents(conversationId)
+                    repository.refreshEvents(conversationId, _uiState.value.filterEventKind)
                 } else {
                     break
                 }

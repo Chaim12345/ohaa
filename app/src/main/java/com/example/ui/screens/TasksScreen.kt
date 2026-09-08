@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,8 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,7 +35,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -47,6 +53,7 @@ import com.example.data.model.ConversationStatus
 import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.theme.StatusError
 
 @Composable
 fun TasksScreen(
@@ -58,14 +65,40 @@ fun TasksScreen(
     onSelectConversation: (String) -> Unit,
     onStartNewTask: () -> Unit,
     onRefresh: () -> Unit,
+    onDeleteConversation: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var conversationToDelete by remember { mutableStateOf<String?>(null) }
+
     val filtered = conversations.filter { conv ->
         val matchesSearch = searchQuery.isBlank() ||
                 conv.title.contains(searchQuery, ignoreCase = true) ||
                 (conv.repository?.contains(searchQuery, ignoreCase = true) == true)
         val matchesStatus = statusFilter == null || conv.status == statusFilter
         matchesSearch && matchesStatus
+    }
+
+    if (conversationToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { conversationToDelete = null },
+            title = { Text("Delete Agent Task") },
+            text = { Text("Are you sure you want to delete this conversation and purge local cache?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        conversationToDelete?.let { id -> onDeleteConversation(id) }
+                        conversationToDelete = null
+                    }
+                ) {
+                    Text("Delete", color = StatusError)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { conversationToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Column(
@@ -161,6 +194,7 @@ fun TasksScreen(
                 ConversationStatus.WORKING,
                 ConversationStatus.READY,
                 ConversationStatus.FINISHED,
+                ConversationStatus.WAITING_FOR_CONFIRMATION,
                 ConversationStatus.ERROR
             )
             items(filterOptions) { status ->
@@ -283,11 +317,17 @@ fun TasksScreen(
 
                                 Spacer(modifier = Modifier.weight(1f))
 
-                                Text(
-                                    text = "${conv.messageCount} msgs",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                IconButton(
+                                    onClick = { conversationToDelete = conv.id },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete task",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
 
                             if (!conv.lastMessage.isNullOrBlank()) {

@@ -2,8 +2,8 @@ package com.example.data.api
 
 import com.example.data.model.ConversationResponse
 import com.example.data.model.EventResponse
+import com.example.data.model.StartTaskResponse
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -25,6 +25,7 @@ class AuthInterceptor(private val apiKeyProvider: () -> String) : Interceptor {
         val key = apiKeyProvider().trim()
         if (key.isNotEmpty()) {
             builder.header("Authorization", "Bearer $key")
+            builder.header("X-Access-Token", key)
         }
 
         return chain.proceed(builder.build())
@@ -77,6 +78,23 @@ object ApiClient {
         }
     }
 
+    fun parseStartTask(rawJson: String): StartTaskResponse? {
+        return try {
+            val adapter = moshi.adapter(StartTaskResponse::class.java)
+            val trimmed = rawJson.trim()
+            if (trimmed.startsWith("[")) {
+                val jsonArray = JSONArray(trimmed)
+                if (jsonArray.length() > 0) {
+                    adapter.fromJson(jsonArray.getJSONObject(0).toString())
+                } else null
+            } else {
+                adapter.fromJson(trimmed)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun parseConversationList(rawJson: String): List<ConversationResponse> {
         val list = mutableListOf<ConversationResponse>()
         try {
@@ -102,7 +120,6 @@ object ApiClient {
                         adapter.fromJson(itemStr)?.let { list.add(it) }
                     }
                 } else {
-                    // Single conversation object
                     adapter.fromJson(trimmed)?.let { list.add(it) }
                 }
             }
@@ -120,8 +137,8 @@ object ApiClient {
             if (trimmed.startsWith("[")) {
                 val jsonArray = JSONArray(trimmed)
                 for (i in 0 until jsonArray.length()) {
-                    val itemStr = jsonArray.getJSONObject(i).toString()
-                    adapter.fromJson(itemStr)?.let { list.add(it) }
+                    val itemObj = jsonArray.getJSONObject(i)
+                    parseSingleEvent(itemObj, adapter)?.let { list.add(it) }
                 }
             } else if (trimmed.startsWith("{")) {
                 val jsonObject = JSONObject(trimmed)
@@ -132,14 +149,45 @@ object ApiClient {
                 }
                 if (array != null) {
                     for (i in 0 until array.length()) {
-                        val itemStr = array.getJSONObject(i).toString()
-                        adapter.fromJson(itemStr)?.let { list.add(it) }
+                        val itemObj = array.getJSONObject(i)
+                        parseSingleEvent(itemObj, adapter)?.let { list.add(it) }
                     }
+                } else {
+                    parseSingleEvent(jsonObject, adapter)?.let { list.add(it) }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return list
+    }
+
+    private fun parseSingleEvent(
+        jsonObj: JSONObject,
+        adapter: com.squareup.moshi.JsonAdapter<EventResponse>
+    ): EventResponse? {
+        val str = jsonObj.toString()
+        val ev = try { adapter.fromJson(str) } catch (_: Exception) { null }
+
+        val kind = if (jsonObj.has("kind")) jsonObj.optString("kind") else ev?.kind ?: ev?.type ?: ev?.eventType
+        val source = if (jsonObj.has("source")) jsonObj.optString("source") else ev?.source
+        val message = when {
+            jsonObj.has("message") -> jsonObj.optString("message")
+            jsonObj.has("detail") -> jsonObj.optString("detail")
+            jsonObj.has("thought") -> jsonObj.optString("thought")
+            else -> ev?.message ?: ev?.thought ?: ev?.action
+        }
+        val detail = when {
+            jsonObj.has("code") -> jsonObj.optString("code")
+            jsonObj.has("observation") -> jsonObj.optString("observation")
+            else -> ev?.detail ?: ev?.observation
+        }
+
+        return (ev ?: EventResponse(id = jsonObj.optString("id"))).copy(
+            kind = kind,
+            source = if (!source.isNullOrBlank()) source else "agent",
+            message = message,
+            detail = detail
+        )
     }
 }

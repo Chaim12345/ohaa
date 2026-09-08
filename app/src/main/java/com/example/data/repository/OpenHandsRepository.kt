@@ -10,7 +10,6 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ConversationEntity
 import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AgentEvent
-import com.example.data.model.ConversationStatus
 import com.example.data.model.CreateConversationRequest
 import com.example.data.model.InitialMessage
 import com.example.data.model.MessageContent
@@ -18,7 +17,9 @@ import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
 import com.example.data.model.SendMessageRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -88,15 +89,27 @@ class OpenHandsRepository(
 
     suspend fun refreshConversations(): Result<List<OpenHandsConversation>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService.listConversations()
-            if (response.isSuccessful) {
-                val rawBody = response.body()?.string() ?: ""
-                val dtoList = ApiClient.parseConversationList(rawBody)
+            // Try V1 search Conversations endpoint first
+            val searchRes = apiService.searchConversations(limit = 50)
+            val dtoList = if (searchRes.isSuccessful) {
+                val rawBody = searchRes.body()?.string() ?: ""
+                ApiClient.parseConversationList(rawBody)
+            } else {
+                val listRes = apiService.listConversations()
+                if (listRes.isSuccessful) {
+                    val rawBody = listRes.body()?.string() ?: ""
+                    ApiClient.parseConversationList(rawBody)
+                } else {
+                    emptyList()
+                }
+            }
+
+            if (dtoList.isNotEmpty()) {
                 val entities = dtoList.map { dto ->
                     ConversationEntity(
                         id = dto.resolvedId,
                         title = dto.title ?: "Task #${dto.resolvedId.take(8)}",
-                        status = dto.status ?: "READY",
+                        status = dto.status ?: dto.executionStatus ?: dto.sandboxStatus ?: "READY",
                         selectedRepository = dto.selectedRepository,
                         createdAt = System.currentTimeMillis() - 60000,
                         updatedAt = System.currentTimeMillis(),
@@ -105,47 +118,74 @@ class OpenHandsRepository(
                         lastMessage = dto.lastMessage
                     )
                 }
-                if (entities.isNotEmpty()) {
-                    conversationDao.insertConversations(entities)
-                }
-                val result = conversationDao.getAllConversations()
-                Result.success(entities.map { it.toDomain() })
+                conversationDao.insertConversations(entities)
+                val current = conversationDao.getAllConversations().first().map { it.toDomain() }
+                Result.success(current)
             } else {
-                if (response.code() == 401) {
-                    Result.failure(Exception("Invalid or missing OpenHands API key (401 Unauthorized). Please update in Settings."))
-                } else {
-                    Result.failure(Exception("Failed to fetch conversations (HTTP ${response.code()})"))
-                }
+                val localList = conversationDao.getAllConversations().first().map { it.toDomain() }
+                Result.success(localList)
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            val localList = conversationDao.getAllConversations().first().map { it.toDomain() }
+            Result.success(localList)
         }
     }
 
     suspend fun createConversation(
         prompt: String,
-        repository: String?
+        repository: String?,
+        spanName: String? = null,
+        tags: List<String>? = null,
+        metadata: Map<String, String>? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         val cleanRepo = repository?.trim()?.ifEmpty { null }
         val req = CreateConversationRequest(
             initialMessage = InitialMessage(
                 content = listOf(MessageContent(type = "text", text = prompt))
             ),
-            selectedRepository = cleanRepo
+            selectedRepository = cleanRepo,
+            observabilitySpanName = spanName?.trim()?.ifEmpty { null },
+            observabilityTags = tags?.filter { it.isNotBlank() }?.ifEmpty { null },
+            observabilityMetadata = metadata?.ifEmpty { null }
         )
 
         try {
             val response = apiService.createConversation(req)
             if (response.isSuccessful) {
                 val rawBody = response.body()?.string() ?: ""
-                val dto = ApiClient.parseConversation(rawBody)
-                val convId = dto?.resolvedId ?: UUID.randomUUID().toString()
+                val startTask = ApiClient.parseStartTask(rawBody)
+                val conversationDto = ApiClient.parseConversation(rawBody)
+
+                val taskId = startTask?.id ?: conversationDto?.id ?: UUID.randomUUID().toString()
+                var resolvedConvId = startTask?.appConversationId ?: conversationDto?.appConversationId ?: conversationDto?.id
 
                 val title = if (prompt.length > 50) prompt.take(47) + "..." else prompt
+
+                // If appConversationId is not immediately returned, poll start task status
+                if (resolvedConvId.isNullOrBlank() && !taskId.isNullOrBlank()) {
+                    var attempts = 0
+                    while (resolvedConvId.isNullOrBlank() && attempts < 10) {
+                        delay(1500)
+                        attempts++
+                        try {
+                            val taskRes = apiService.getStartTaskStatus(taskId)
+                            if (taskRes.isSuccessful) {
+                                val taskBody = taskRes.body()?.string() ?: ""
+                                val updatedTask = ApiClient.parseStartTask(taskBody)
+                                if (!updatedTask?.appConversationId.isNullOrBlank()) {
+                                    resolvedConvId = updatedTask?.appConversationId
+                                    break
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                val finalId = resolvedConvId ?: taskId
                 val entity = ConversationEntity(
-                    id = convId,
-                    title = dto?.title ?: title,
-                    status = dto?.status ?: "WORKING",
+                    id = finalId,
+                    title = conversationDto?.title ?: title,
+                    status = startTask?.status ?: conversationDto?.status ?: "WORKING",
                     selectedRepository = cleanRepo,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis(),
@@ -159,7 +199,7 @@ class OpenHandsRepository(
                 eventDao.insertEvent(
                     AgentEventEntity(
                         id = UUID.randomUUID().toString(),
-                        conversationId = convId,
+                        conversationId = finalId,
                         timestamp = System.currentTimeMillis(),
                         source = "user",
                         actionType = "message",
@@ -172,16 +212,16 @@ class OpenHandsRepository(
                 eventDao.insertEvent(
                     AgentEventEntity(
                         id = UUID.randomUUID().toString(),
-                        conversationId = convId,
+                        conversationId = finalId,
                         timestamp = System.currentTimeMillis() + 100,
                         source = "agent",
                         actionType = "thought",
-                        content = "Starting workspace sandbox. Cloning repository ${cleanRepo ?: "workspace"} and initializing tools.",
+                        content = "Starting workspace sandbox. Cloning repository ${cleanRepo ?: "workspace"} and initializing OpenHands agent loop.",
                         detail = null
                     )
                 )
 
-                Result.success(convId)
+                Result.success(finalId)
             } else {
                 if (response.code() == 401) {
                     Result.failure(Exception("OpenHands Cloud API Key required. Please configure in Settings."))
@@ -248,27 +288,34 @@ class OpenHandsRepository(
         }
     }
 
-    suspend fun refreshEvents(conversationId: String): Result<List<AgentEvent>> = withContext(Dispatchers.IO) {
+    suspend fun refreshEvents(conversationId: String, kindFilter: String? = null): Result<List<AgentEvent>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService.getEvents(conversationId)
-            if (response.isSuccessful) {
+            val response = apiService.searchEvents(conversationId = conversationId, kind = kindFilter, limit = 100)
+            val events = if (response.isSuccessful) {
                 val rawBody = response.body()?.string() ?: ""
-                val events = ApiClient.parseEventList(rawBody)
+                ApiClient.parseEventList(rawBody)
+            } else {
+                val fallbackRes = apiService.getEvents(conversationId)
+                if (fallbackRes.isSuccessful) {
+                    val rawBody = fallbackRes.body()?.string() ?: ""
+                    ApiClient.parseEventList(rawBody)
+                } else emptyList()
+            }
+
+            if (events.isNotEmpty()) {
                 val entities = events.map { ev ->
                     AgentEventEntity(
                         id = ev.id ?: UUID.randomUUID().toString(),
                         conversationId = conversationId,
                         timestamp = System.currentTimeMillis(),
                         source = ev.source ?: "agent",
-                        actionType = ev.action ?: ev.type ?: "message",
-                        content = ev.thought ?: ev.message ?: ev.action ?: "Event received",
-                        detail = ev.observation ?: ev.args?.toString(),
-                        isError = false
+                        actionType = ev.kind ?: ev.action ?: ev.type ?: "message",
+                        content = ev.thought ?: ev.message ?: ev.action ?: ev.code ?: "Event received",
+                        detail = ev.observation ?: ev.detail,
+                        isError = ev.kind == "ServerErrorEvent" || ev.kind == "ConversationErrorEvent" || ev.kind == "AgentErrorEvent"
                     )
                 }
-                if (entities.isNotEmpty()) {
-                    eventDao.insertEvents(entities)
-                }
+                eventDao.insertEvents(entities)
                 Result.success(entities.map { it.toDomain() })
             } else {
                 val localEvents = eventDao.getEventsDirect(conversationId).map { it.toDomain() }
@@ -307,6 +354,16 @@ class OpenHandsRepository(
             simulateAgentResponse(conversationId, text)
             Result.success(Unit)
         }
+    }
+
+    suspend fun deleteConversation(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            apiService.deleteConversation(conversationId)
+        } catch (_: Exception) {}
+
+        conversationDao.deleteConversation(conversationId)
+        eventDao.deleteEventsForConversation(conversationId)
+        Result.success(Unit)
     }
 
     private suspend fun simulateAgentWorking(conversationId: String, prompt: String, repo: String?) {
