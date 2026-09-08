@@ -123,7 +123,9 @@ fun OpenHandsApp(
               uiState.selectedConversationId?.let { id ->
                 viewModel.sendFollowUpMessage(id, text)
               }
-            }
+            },
+            onDeleteConversation = { id -> viewModel.deleteConversation(id) },
+            onEventKindFilterSelected = { kind -> viewModel.setEventKindFilter(kind) }
         )
       } else {
         when (uiState.currentTab) {
@@ -149,17 +151,22 @@ fun OpenHandsApp(
                 onStatusFilterChanged = { status -> viewModel.setStatusFilter(status) },
                 onSelectConversation = { id -> viewModel.selectConversation(id) },
                 onStartNewTask = { viewModel.setTab(AppNavTab.NEW_TASK) },
-                onRefresh = { viewModel.refreshConversations() }
+                onRefresh = { viewModel.refreshConversations() },
+                onDeleteConversation = { id -> viewModel.deleteConversation(id) }
             )
           }
           AppNavTab.NEW_TASK -> {
             NewTaskScreen(
                 promptText = uiState.newTaskPrompt,
                 repoText = uiState.newTaskRepo,
+                spanNameText = uiState.newTaskSpanName,
+                tagsText = uiState.newTaskTags,
                 templates = templates,
                 isLoading = uiState.isLoading,
                 onPromptChanged = { p -> viewModel.updateNewTaskPrompt(p) },
                 onRepoChanged = { r -> viewModel.updateNewTaskRepo(r) },
+                onSpanNameChanged = { s -> viewModel.updateNewTaskSpanName(s) },
+                onTagsChanged = { t -> viewModel.updateNewTaskTags(t) },
                 onSelectTemplate = { t -> viewModel.applyTemplate(t) },
                 onLaunchTask = {
                   viewModel.createNewTask { convId ->
@@ -187,4 +194,3 @@ fun OpenHandsApp(
     }
   }
 }
-
