@@ -137,9 +137,22 @@ data class Conversation(
     val isPublic: Boolean,
     val parentConversationId: String?,
     val prNumbers: List<Int>,
-    val trigger: String?
+    val trigger: String?,
+    /** Sandbox workspace directory, from the server's `archiveworkspacepath` tag. */
+    val workspacePath: String?
 ) {
     val status: ConversationStatus get() = ConversationStatus.derive(sandboxStatus, executionStatus)
+
+    /**
+     * Best guess at the git repository root inside the sandbox: the workspace directory plus the
+     * repository's short name, which is how OpenHands clones it (e.g. /workspace/project/<id>/ohaa).
+     */
+    val defaultRepoRoot: String
+        get() {
+            val base = workspacePath?.trimEnd('/') ?: "/workspace/project/$id"
+            val leaf = repository?.substringAfterLast('/')?.trim()?.ifEmpty { null }
+            return if (leaf != null) "$base/$leaf" else base
+        }
     val displayTitle: String get() = title.ifBlank { "Conversation ${id.take(8)}" }
     val webUrl: String? get() = conversationUrl
 }

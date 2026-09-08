@@ -181,3 +181,43 @@ class ConversationPruningTest {
         server.shutdown(); db.close()
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
+class StartingSandboxAndRepoRootTest {
+    @Test
+    fun startingSandbox_queuesMessageInsteadOfSending() = runBlocking {
+        val server = MockWebServer().also { it.start() }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val repo = OpenHandsRepository(context, db) { _, kp -> ApiClient.create(server.url("/").toString(), kp, false) }
+        repo.updateConfig("k", server.url("/").toString())
+        db.conversationDao().upsert(
+            ConversationEntity("c1", "t", "own/repo", null, null, "sb1", "STARTING", "idle", 1, 1,
+                workspacePath = "/workspace/project/c1")
+        )
+        server.enqueue(MockResponse().setBody("""{"id":"m1","queued":true,"position":1}"""))
+
+        val outcome = repo.sendMessage("c1", "hello").getOrThrow()
+
+        assertEquals("/api/v1/conversations/c1/pending-messages", server.takeRequest().path)
+        assertEquals(SandboxStatus.STARTING, outcome.sandboxStatus)
+        assertTrue(outcome.message!!.contains("position 1"))
+        assertTrue(db.eventDao().snapshotForConversation("c1").single().title.contains("queued"))
+        server.shutdown(); db.close()
+    }
+
+    @Test
+    fun defaultRepoRoot_usesWorkspaceTagAndRepoLeaf() {
+        val c = ConversationEntity("c1", "t", "Chaim12345/ohaa", null, null, "sb", "RUNNING", "idle", 1, 1,
+            workspacePath = "/workspace/project/c1").toDomain()
+        assertEquals("/workspace/project/c1/ohaa", c.defaultRepoRoot)
+
+        val noRepo = ConversationEntity("c2", "t", null, null, null, "sb", "RUNNING", "idle", 1, 1,
+            workspacePath = "/workspace/project/c2").toDomain()
+        assertEquals("/workspace/project/c2", noRepo.defaultRepoRoot)
+
+        val noTag = ConversationEntity("c3", "t", "o/r", null, null, "sb", "RUNNING", "idle", 1, 1).toDomain()
+        assertEquals("/workspace/project/c3/r", noTag.defaultRepoRoot)
+    }
+}

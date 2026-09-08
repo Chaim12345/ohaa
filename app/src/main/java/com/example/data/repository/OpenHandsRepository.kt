@@ -309,6 +309,18 @@ class OpenHandsRepository(
 
         var resumed = false
         val conv = conversationDao.getById(conversationId)?.toDomain()
+
+        // A sandbox that is still booting cannot accept a message; the server queues it for us instead.
+        if (conv?.sandboxStatus == SandboxStatus.STARTING) {
+            val queued = api.queuePendingMessage(conversationId, SendMessageRequest.text(trimmed)).bodyOrThrow()
+            eventDao.upsert(userMessageRow(conversationId, trimmed, "You (queued)"))
+            return@io SendMessageOutcome(
+                SandboxStatus.STARTING,
+                resumedSandbox = false,
+                message = "Queued while the sandbox starts (position ${queued.position})."
+            )
+        }
+
         if (conv?.sandboxStatus == SandboxStatus.PAUSED || conv?.sandboxStatus == SandboxStatus.MISSING) {
             conv.sandboxId?.let { sid ->
                 api.resumeSandbox(sid).bodyOrThrow()
@@ -317,54 +329,14 @@ class OpenHandsRepository(
             }
         }
 
-        val optimisticId = "local-" + UUID.randomUUID()
-        eventDao.upsert(
-            AgentEventEntity(
-                id = optimisticId,
-                conversationId = conversationId,
-                timestamp = System.currentTimeMillis(),
-                timestampIso = null,
-                kind = "MESSAGE",
-                category = "USER_MESSAGE",
-                source = "user",
-                title = "You",
-                body = trimmed,
-                code = null,
-                codeLabel = null,
-                toolName = null,
-                actionId = null,
-                toolCallId = null,
-                filePath = null,
-                exitCode = null,
-                securityRisk = null
-            )
-        )
+        val optimisticRow = userMessageRow(conversationId, trimmed, "You")
+        val optimisticId = optimisticRow.id
+        eventDao.upsert(optimisticRow)
 
         val response = try {
             api.sendMessage(conversationId, SendMessageRequest.text(trimmed)).bodyOrThrow()
         } catch (e: Exception) {
-            eventDao.upsert(
-                AgentEventEntity(
-                    id = optimisticId,
-                    conversationId = conversationId,
-                    timestamp = System.currentTimeMillis(),
-                    timestampIso = null,
-                    kind = "MESSAGE",
-                    category = "USER_MESSAGE",
-                    source = "user",
-                    title = "You (not delivered)",
-                    body = trimmed,
-                    code = null,
-                    codeLabel = null,
-                    isError = true,
-                    toolName = null,
-                    actionId = null,
-                    toolCallId = null,
-                    filePath = null,
-                    exitCode = null,
-                    securityRisk = null
-                )
-            )
+            eventDao.upsert(optimisticRow.copy(title = "You (not delivered)", isError = true))
             throw e
         }
         val sandboxStatus = SandboxStatus.from(response.sandboxStatus)
@@ -376,6 +348,27 @@ class OpenHandsRepository(
         runCatching { syncEvents(conversationId) }
         SendMessageOutcome(sandboxStatus, resumed, response.message)
     }
+
+    /** Locally inserted user message, shown immediately and replaced by the server's MessageEvent on the next sync. */
+    private fun userMessageRow(conversationId: String, text: String, title: String) = AgentEventEntity(
+        id = "local-" + UUID.randomUUID(),
+        conversationId = conversationId,
+        timestamp = System.currentTimeMillis(),
+        timestampIso = null,
+        kind = "MESSAGE",
+        category = "USER_MESSAGE",
+        source = "user",
+        title = title,
+        body = text,
+        code = null,
+        codeLabel = null,
+        toolName = null,
+        actionId = null,
+        toolCallId = null,
+        filePath = null,
+        exitCode = null,
+        securityRisk = null
+    )
 
     private suspend fun waitForSandboxRunning(sandboxId: String) {
         val deadline = System.currentTimeMillis() + RESUME_TIMEOUT_MS
@@ -628,6 +621,7 @@ class OpenHandsRepository(
         parentConversationId = parentConversationId,
         prNumbers = prNumber?.joinToString(",") ?: "",
         trigger = trigger,
+        workspacePath = tags?.get("archiveworkspacepath"),
         syncedAt = now
     )
 

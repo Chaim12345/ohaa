@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -221,8 +222,16 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun openChanges(conversationId: String) {
-        _uiState.update { it.copy(screenStack = it.screenStack + Screen.Changes(conversationId)) }
-        loadChanges(conversationId)
+        viewModelScope.launch {
+            val root = repository.conversationFlow(conversationId).firstOrNull()?.defaultRepoRoot
+            _uiState.update {
+                it.copy(
+                    screenStack = it.screenStack + Screen.Changes(conversationId),
+                    workspace = it.workspace.copy(repoRoot = root ?: it.workspace.repoRoot)
+                )
+            }
+            loadChanges(conversationId)
+        }
     }
 
     fun openSandboxes() {

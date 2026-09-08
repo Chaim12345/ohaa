@@ -32,6 +32,7 @@ data class ConversationEntity(
     val parentConversationId: String? = null,
     val prNumbers: String = "",
     val trigger: String? = null,
+    val workspacePath: String? = null,
     /** Local bookkeeping: when this row was last synced from the server. */
     val syncedAt: Long = System.currentTimeMillis()
 ) {
@@ -54,7 +55,8 @@ data class ConversationEntity(
         isPublic = isPublic,
         parentConversationId = parentConversationId,
         prNumbers = prNumbers.split(',').mapNotNull { it.trim().toIntOrNull() },
-        trigger = trigger
+        trigger = trigger,
+        workspacePath = workspacePath
     )
 }
 

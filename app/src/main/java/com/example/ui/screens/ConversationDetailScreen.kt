@@ -263,15 +263,14 @@ fun ConversationDetailScreen(
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = it },
-                        placeholder = { Text(if (sandboxStarting) "Sandbox is starting…" else "Message the agent…") },
-                        enabled = !sandboxStarting,
+                        placeholder = { Text(if (sandboxStarting) "Queue a message while the sandbox starts…" else "Message the agent…") },
                         maxLines = 4,
                         shape = RoundedCornerShape(18.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OpenHandsPrimaryDark, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
                         modifier = Modifier.weight(1f).testTag("message_input")
                     )
                     Spacer(Modifier.width(8.dp))
-                    val canSend = draft.isNotBlank() && !isSending && !sandboxStarting
+                    val canSend = draft.isNotBlank() && !isSending
                     IconButton(
                         onClick = { if (canSend) { onSend(draft); draft = "" } },
                         enabled = canSend,
