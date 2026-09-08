@@ -28,8 +28,10 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -79,8 +81,10 @@ fun StatusBadge(
         ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusReady, Icons.Default.CheckCircle)
         ConversationStatus.WAITING_FOR_SANDBOX, ConversationStatus.PREPARING_REPOSITORY,
         ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusWaiting, Icons.Default.HourglassTop)
+        ConversationStatus.WAITING_FOR_CONFIRMATION -> Pair(Color(0xFFFF9800), Icons.Default.Warning)
+        ConversationStatus.STUCK -> Pair(Color(0xFFE91E63), Icons.Default.Warning)
         ConversationStatus.ERROR -> Pair(StatusError, Icons.Default.Error)
-        ConversationStatus.PAUSED -> Pair(StatusPaused, Icons.Default.BugReport)
+        ConversationStatus.PAUSED -> Pair(StatusPaused, Icons.Default.Pause)
         ConversationStatus.UNKNOWN -> Pair(StatusPaused, Icons.Default.BugReport)
     }
 
@@ -288,16 +292,17 @@ fun EventItemView(
         }
         else -> {
             // Agent Event (Thought, Bash, Edit, Observation, Final Message)
-            val isThought = event.actionType == "thought"
-            val isBash = event.actionType == "bash" || event.content.startsWith("$")
-            val isEdit = event.actionType == "edit" || "FileEdit" in event.content
+            val isThought = event.actionType == "thought" || event.actionType == "LLMCompletionLogEvent"
+            val isBash = event.actionType == "bash" || event.actionType == "ActionEvent" || event.content.startsWith("$")
+            val isEdit = event.actionType == "edit" || "FileEdit" in event.content || event.actionType == "ACPToolCallEvent"
+            val isError = event.isError || event.actionType == "ServerErrorEvent" || event.actionType == "ConversationErrorEvent"
 
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isError) StatusError.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline),
                 modifier = modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
@@ -313,8 +318,9 @@ fun EventItemView(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val (icon, badgeTitle, badgeColor) = when {
+                                isError -> Triple(Icons.Default.Error, "SERVER/AGENT ERROR", StatusError)
                                 isThought -> Triple(Icons.Default.Lightbulb, "AGENT REASONING", OpenHandsSecondaryDark)
-                                isBash -> Triple(Icons.Default.Terminal, "TOOL: BASH EXECUTION", OpenHandsPrimaryDark)
+                                isBash -> Triple(Icons.Default.Terminal, "TOOL: EXECUTION", OpenHandsPrimaryDark)
                                 isEdit -> Triple(Icons.Default.BugReport, "TOOL: FILE EDIT", OpenHandsTertiaryDark)
                                 else -> Triple(Icons.Default.CheckCircle, "AGENT RESPONSE", OpenHandsPrimaryDark)
                             }
@@ -354,7 +360,7 @@ fun EventItemView(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 TerminalCodeBlock(
                                     codeText = event.detail,
-                                    title = if (isBash) "terminal execution output" else "diff inspection"
+                                    title = if (isBash) "terminal execution output" else "diff / observation details"
                                 )
                             }
                         }

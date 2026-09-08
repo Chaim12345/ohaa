@@ -22,8 +22,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +57,7 @@ import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.EventItemView
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.theme.StatusError
 
 @Composable
 fun ConversationDetailScreen(
@@ -60,9 +67,13 @@ fun ConversationDetailScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onDeleteConversation: (String) -> Unit = {},
+    onEventKindFilterSelected: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var followUpText by remember { mutableStateOf("") }
+    var selectedKindFilter by remember { mutableStateOf<String?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     val quickSuggestions = listOf(
@@ -72,10 +83,47 @@ fun ConversationDetailScreen(
         "Explain the bug cause and fix"
     )
 
-    LaunchedEffect(events.size) {
-        if (events.isNotEmpty()) {
-            listState.animateScrollToItem(events.size - 1)
+    val eventKinds = listOf(
+        Triple("All", null, "All Events"),
+        Triple("Actions", "ActionEvent", "Tool Executions"),
+        Triple("Messages", "MessageEvent", "Messages"),
+        Triple("Observations", "ObservationEvent", "Outputs"),
+        Triple("Errors", "ServerErrorEvent", "Errors")
+    )
+
+    val filteredEvents = remember(events, selectedKindFilter) {
+        if (selectedKindFilter == null) events
+        else events.filter { it.actionType == selectedKindFilter || (selectedKindFilter == "ServerErrorEvent" && it.isError) }
+    }
+
+    LaunchedEffect(filteredEvents.size) {
+        if (filteredEvents.isNotEmpty()) {
+            listState.animateScrollToItem(filteredEvents.size - 1)
         }
+    }
+
+    if (showDeleteConfirm && conversation != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Conversation") },
+            text = { Text("Are you sure you want to delete conversation ${conversation.id}?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteConversation(conversation.id)
+                        showDeleteConfirm = false
+                        onBack()
+                    }
+                ) {
+                    Text("Delete", color = StatusError)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Column(
@@ -138,7 +186,7 @@ fun ConversationDetailScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
                             Text(
-                                text = "Sandbox ID: ${(conversation?.id ?: "").take(8)}",
+                                text = "Sandbox: ${(conversation?.id ?: "").take(8)}",
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -159,6 +207,56 @@ fun ConversationDetailScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.testTag("delete_conversation_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // Event Kind Filter Bar
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FilterList,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(eventKinds) { (label, kindValue, _) ->
+                        val isSelected = selectedKindFilter == kindValue
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                selectedKindFilter = kindValue
+                                onEventKindFilterSelected(kindValue)
+                            },
+                            label = { Text(label, fontSize = 11.sp) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
+                                selectedLabelColor = OpenHandsPrimaryDark
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -169,7 +267,7 @@ fun ConversationDetailScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            if (events.isEmpty()) {
+            if (filteredEvents.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -199,7 +297,7 @@ fun ConversationDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    items(events) { event ->
+                    items(filteredEvents) { event ->
                         EventItemView(event = event)
                     }
 
