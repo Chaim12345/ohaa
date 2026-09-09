@@ -32,6 +32,47 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Smoke test — launch app on emulator and capture crash logs
+        # Boots a headless emulator, installs the freshly built APK, starts the
+        # launcher activity, then verifies the process survived. If the process
+        # died the full crash stack trace is written to the job summary and the
+        # job fails, so "APK crashes on open" is caught before release.
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: |
+            adb install -t -r app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n com.aistudio.openhandscloud.nxvtq/com.example.MainActivity || true
+            sleep 20
+            PID=$(adb shell pidof com.aistudio.openhandscloud.nxvtq | tr -d '[:space:]')
+            adb logcat -d > full-logcat.txt
+            adb logcat -d -b crash > crash-logcat.txt || true
+            echo "App process after launch: '${PID}'"
+            if [ -z "$PID" ]; then
+              {
+                echo "## APP CRASHED ON LAUNCH — crash buffer:"
+                echo ""
+                echo '```'
+                cat crash-logcat.txt
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::App process died within 20s of launch — see job summary and logcat artifacts"
+              exit 1
+            fi
+
+      - name: Upload emulator logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-logcat
+          path: |
+            full-logcat.txt
+            crash-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload APK to temp.sh
         # Convenience mirror so the APK is grabbable without GitHub auth (also a
         # fallback when the artifact upload below hits the storage quota).

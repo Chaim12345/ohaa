@@ -120,7 +120,15 @@ class OpenHandsViewModel(
 
     init {
         viewModelScope.launch {
-            repository.seedLocalData()
+            try {
+                repository.seedLocalData()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Local data unavailable: ${e.message ?: "storage error"}"
+                )
+            }
             _uiState.value = _uiState.value.copy(isDemoMode = !repository.isConfigured())
             // Reflect the connection state immediately (demo notice or cloud sync)
             // instead of leaving the dashboard in a blank "Not connected" limbo.
