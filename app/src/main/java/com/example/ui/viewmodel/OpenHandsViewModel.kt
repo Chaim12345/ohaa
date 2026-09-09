@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.ApiClient
 import com.example.data.api.ApiSettings
@@ -75,19 +76,19 @@ enum class LaunchStage(val label: String) {
     FAILED("Failed")
 }
 
-class OpenHandsViewModel(
-    private val repository: OpenHandsRepository
-) : ViewModel() {
+class OpenHandsViewModel(application: Application) :
+    AndroidViewModel(application) {
 
-    constructor(application: android.app.Application) : this(
-        OpenHandsRepository(
-            settings = ApiSettings(application),
-            database = AppDatabase.getInstance(application),
-            apiProvider = {
-                val settings = ApiSettings(application)
-                ApiClient.forConfig({ settings.baseUrl }, { settings.apiKey })
-            }
-        )
+    // Built from the Application handed to us by the default ViewModelProvider
+    // factory (AndroidViewModel constructor) — no custom factory needed at the
+    // call site, and it can never crash with "Cannot create an instance".
+    private val repository: OpenHandsRepository = OpenHandsRepository(
+        settings = ApiSettings(application),
+        database = AppDatabase.getInstance(application),
+        apiProvider = {
+            val settings = ApiSettings(application)
+            ApiClient.forConfig({ settings.baseUrl }, { settings.apiKey })
+        }
     )
 
     private val _uiState = MutableStateFlow(
