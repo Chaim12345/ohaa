@@ -160,7 +160,7 @@ enum class ConversationUiStatus(val label: String, val isTerminal: Boolean, val 
 object StatusMapper {
 
     private val startupStatuses = setOf(
-        "WORKING", "WAITING_FOR_SANDBOX", "PREPARING_REPOSITORY", "SETTING_UP_SKILLS"
+        "WAITING_FOR_SANDBOX", "PREPARING_REPOSITORY", "SETTING_UP_SKILLS"
     )
 
     fun map(sandboxStatus: String?, executionStatus: String?, rawStatus: String? = null): ConversationUiStatus {
@@ -189,8 +189,7 @@ object StatusMapper {
 
         // Fallbacks for servers that only return one generic status string
         return when (raw ?: exec ?: sandbox) {
-            "RUNNING" -> ConversationUiStatus.RUNNING
-            "WORKING" -> ConversationUiStatus.WORKING
+            "RUNNING", "WORKING" -> ConversationUiStatus.RUNNING
             "READY", "FINISHED", "COMPLETED", "SUCCESS" -> ConversationUiStatus.FINISHED
             "PAUSED" -> ConversationUiStatus.PAUSED
             "ERROR", "FAILED", "STUCK", "MISSING" -> ConversationUiStatus.ERROR

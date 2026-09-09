@@ -1,6 +1,9 @@
 package com.example
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,10 +21,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
 class UiRegressionTest {
 
     @get:Rule
@@ -48,7 +49,9 @@ class UiRegressionTest {
             }
         }
 
-        composeTestRule.onNodeWithTag("btn_launch").assertExists().performClick()
+        composeTestRule.onNodeWithTag("new_task_screen")
+            .performScrollToNode(hasTestTag("btn_launch"))
+        composeTestRule.onNodeWithTag("btn_launch").assertIsDisplayed().performClick()
         assertTrue(launched)
         composeTestRule.onNodeWithText("Demo mode is read-only. Add an API key in Settings to launch a live cloud agent.")
             .assertExists()
