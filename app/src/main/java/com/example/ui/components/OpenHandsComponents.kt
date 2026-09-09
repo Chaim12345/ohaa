@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -20,13 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Terminal
@@ -50,57 +49,56 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AgentEvent
-import com.example.data.model.ConversationStatus
-import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.OpenHandsSecondaryDark
-import com.example.ui.theme.OpenHandsSurfaceVariantDark
-import com.example.ui.theme.OpenHandsTerminalBg
-import com.example.ui.theme.OpenHandsTertiaryDark
-import com.example.ui.theme.StatusError
-import com.example.ui.theme.StatusPaused
-import com.example.ui.theme.StatusReady
-import com.example.ui.theme.StatusWaiting
-import com.example.ui.theme.StatusWorking
+import com.example.data.model.ConversationUiStatus
+import com.example.ui.theme.CanvasBorder
+import com.example.ui.theme.CanvasDanger
+import com.example.ui.theme.CanvasPrimary
+import com.example.ui.theme.CanvasSecondary
+import com.example.ui.theme.CanvasSuccess
+import com.example.ui.theme.CanvasTerminalBg
+import com.example.ui.theme.CanvasWarning
+import com.example.ui.theme.CodeMedium
+
+fun statusColor(status: ConversationUiStatus): Color = when (status) {
+    ConversationUiStatus.WORKING, ConversationUiStatus.RUNNING -> CanvasWarning
+    ConversationUiStatus.STARTING -> CanvasPrimary
+    ConversationUiStatus.WAITING_INPUT -> CanvasSecondary
+    ConversationUiStatus.PAUSED -> CanvasBorder
+    ConversationUiStatus.IDLE -> CanvasPrimary
+    ConversationUiStatus.FINISHED -> CanvasSuccess
+    ConversationUiStatus.ERROR -> CanvasDanger
+    ConversationUiStatus.UNKNOWN -> CanvasBorder
+}
 
 @Composable
-fun StatusBadge(
-    status: ConversationStatus,
-    modifier: Modifier = Modifier
-) {
-    val (color, icon) = when (status) {
-        ConversationStatus.WORKING, ConversationStatus.RUNNING -> Pair(StatusWorking, Icons.Default.PlayArrow)
-        ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusReady, Icons.Default.CheckCircle)
-        ConversationStatus.WAITING_FOR_SANDBOX, ConversationStatus.PREPARING_REPOSITORY,
-        ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusWaiting, Icons.Default.HourglassTop)
-        ConversationStatus.ERROR -> Pair(StatusError, Icons.Default.Error)
-        ConversationStatus.PAUSED -> Pair(StatusPaused, Icons.Default.BugReport)
-        ConversationStatus.UNKNOWN -> Pair(StatusPaused, Icons.Default.BugReport)
-    }
-
+fun StatusChip(status: ConversationUiStatus, modifier: Modifier = Modifier) {
+    val color = statusColor(status)
     Surface(
-        color = color.copy(alpha = 0.15f),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.4f)),
-        modifier = modifier.testTag("status_badge_${status.name}")
+        color = color.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        modifier = modifier.testTag("status_chip_${status.name}")
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(6.dp)
+                    .size(7.dp)
                     .clip(CircleShape)
                     .background(color)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 text = status.label,
                 color = color,
@@ -112,58 +110,45 @@ fun StatusBadge(
 }
 
 @Composable
-fun StatMetricCard(
+fun StatCard(
     title: String,
     value: String,
     subtitle: String,
     icon: ImageVector,
-    accentColor: Color,
+    accent: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(Modifier.padding(14.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(accentColor.copy(alpha = 0.15f)),
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(accent.copy(alpha = 0.14f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(icon, null, tint = accent, modifier = Modifier.size(17.dp))
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = value,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
+                subtitle,
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -174,7 +159,7 @@ fun StatMetricCard(
 @Composable
 fun TerminalCodeBlock(
     codeText: String,
-    title: String = "stdout",
+    title: String = "output",
     modifier: Modifier = Modifier
 ) {
     val clipboard = LocalClipboardManager.current
@@ -184,180 +169,153 @@ fun TerminalCodeBlock(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(OpenHandsTerminalBg)
-            .border(1.dp, OpenHandsBorderDark, RoundedCornerShape(10.dp))
+            .background(CanvasTerminalBg)
+            .border(1.dp, CanvasBorder, RoundedCornerShape(10.dp))
     ) {
-        // Top bar
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(OpenHandsSurfaceVariantDark)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF5F56)))
-                Spacer(modifier = Modifier.width(5.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFFBD2E)))
-                Spacer(modifier = Modifier.width(5.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF27C93F)))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+            Dot(Color(0xFFFF5F56)); Spacer(Modifier.width(4.dp))
+            Dot(Color(0xFFFFBD2E)); Spacer(Modifier.width(4.dp))
+            Dot(Color(0xFF27C93F)); Spacer(Modifier.width(8.dp))
+            Text(
+                text = title,
+                color = Color.White.copy(alpha = 0.65f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
             IconButton(
                 onClick = {
                     clipboard.setText(AnnotatedString(codeText))
-                    Toast.makeText(context, "Output copied to clipboard", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy code",
+                    Icons.Default.ContentCopy,
+                    contentDescription = "Copy output",
                     tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
             }
         }
-
-        // Body
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(10.dp)
         ) {
             Text(
                 text = codeText,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                color = Color(0xFF56D364),
-                lineHeight = 16.sp
+                style = CodeMedium,
+                color = Color(0xFF7EE787)
             )
         }
     }
 }
 
 @Composable
-fun EventItemView(
-    event: AgentEvent,
-    modifier: Modifier = Modifier
-) {
-    var isExpanded by remember { mutableStateOf(true) }
+private fun Dot(color: Color) {
+    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+}
 
-    when (event.source.lowercase()) {
-        "user" -> {
-            // User prompt message
-            Row(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.End
+@Composable
+fun EventItemView(event: AgentEvent, modifier: Modifier = Modifier) {
+    var expanded by remember(event.id) { mutableStateOf(true) }
+    val source = event.source.lowercase()
+
+    if (source == "user") {
+        Row(
+            modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp),
+                colors = CardDefaults.cardColors(containerColor = CanvasPrimary.copy(alpha = 0.16f)),
+                border = BorderStroke(1.dp, CanvasPrimary.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth(0.88f)
             ) {
-                Card(
-                    shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = OpenHandsPrimaryDark
-                    ),
-                    modifier = Modifier.fillMaxWidth(0.88f)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "You (Prompt)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = event.content,
-                            fontSize = 14.sp,
-                            color = Color.White
-                        )
-                    }
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        "You",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CanvasPrimary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(event.content, fontSize = 14.sp, lineHeight = 19.sp)
                 }
             }
         }
-        else -> {
-            // Agent Event (Thought, Bash, Edit, Observation, Final Message)
-            val isThought = event.actionType == "thought"
-            val isBash = event.actionType == "bash" || event.content.startsWith("$")
-            val isEdit = event.actionType == "edit" || "FileEdit" in event.content
+        return
+    }
 
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = modifier
+    val isThought = event.actionType?.equals("thought", ignoreCase = true) == true ||
+        event.actionType?.equals("AgentThinking", ignoreCase = true) == true
+    val isBash = event.actionType?.equals("bash", ignoreCase = true) == true ||
+        event.actionType?.equals("execute", ignoreCase = true) == true
+    val isEdit = event.actionType?.equals("edit", ignoreCase = true) == true ||
+        event.actionType?.equals("str_replace_editor", ignoreCase = true) == true
+
+    val (icon, badge, color) = when {
+        isThought -> Triple(Icons.Default.Lightbulb, "AGENT REASONING", CanvasSecondary)
+        isBash -> Triple(Icons.Default.Terminal, "TOOL: BASH", CanvasPrimary)
+        isEdit -> Triple(Icons.Default.PlayArrow, "TOOL: EDIT", CanvasSuccess)
+        event.isError -> Triple(Icons.Default.ErrorOutline, "ERROR", CanvasDanger)
+        else -> Triple(Icons.Default.CheckCircle, "AGENT", CanvasPrimary)
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // Header row
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isExpanded = !isExpanded }
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            val (icon, badgeTitle, badgeColor) = when {
-                                isThought -> Triple(Icons.Default.Lightbulb, "AGENT REASONING", OpenHandsSecondaryDark)
-                                isBash -> Triple(Icons.Default.Terminal, "TOOL: BASH EXECUTION", OpenHandsPrimaryDark)
-                                isEdit -> Triple(Icons.Default.BugReport, "TOOL: FILE EDIT", OpenHandsTertiaryDark)
-                                else -> Triple(Icons.Default.CheckCircle, "AGENT RESPONSE", OpenHandsPrimaryDark)
-                            }
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = null,
-                                tint = badgeColor,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = badgeTitle,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = badgeColor
-                            )
-                        }
-
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (isExpanded) "Collapse" else "Expand",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    .clickable { expanded = !expanded }
+                    .semantics {
+                        role = Role.Button
+                        stateDescription = if (expanded) "Expanded" else "Collapsed"
                     }
-
-                    AnimatedVisibility(visible = isExpanded) {
-                        Column(modifier = Modifier.padding(top = 8.dp)) {
-                            Text(
-                                text = event.content,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 18.sp
-                            )
-
-                            if (!event.detail.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                TerminalCodeBlock(
-                                    codeText = event.detail,
-                                    title = if (isBash) "terminal execution output" else "diff inspection"
-                                )
-                            }
-                        }
+            ) {
+                Icon(icon, null, tint = color, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    badge,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = color,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(17.dp)
+                )
+            }            AnimatedVisibility(expanded) {
+                Column(Modifier.padding(top = 8.dp)) {
+                    Text(
+                        event.content,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    if (!event.detail.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        TerminalCodeBlock(
+                            codeText = event.detail,
+                            title = if (isBash) "terminal output" else if (isEdit) "diff" else "output"
+                        )
                     }
                 }
             }

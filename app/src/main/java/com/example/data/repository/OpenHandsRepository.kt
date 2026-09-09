@@ -1,606 +1,509 @@
 package com.example.data.repository
 
-import android.content.Context
-import android.content.SharedPreferences
-import com.example.BuildConfig
-import com.example.data.api.ApiClient
+import com.example.data.api.ApiSettings
 import com.example.data.api.OpenHandsApiService
-import com.example.data.local.AgentEventEntity
 import com.example.data.local.AppDatabase
+import com.example.data.local.AgentEventEntity
 import com.example.data.local.ConversationEntity
 import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AgentEvent
-import com.example.data.model.ConversationStatus
-import com.example.data.model.CreateConversationRequest
-import com.example.data.model.InitialMessage
-import com.example.data.model.MessageContent
+import com.example.data.model.CloudCredits
+import com.example.data.model.ConversationDto
+import com.example.data.model.CreateConversationRequestDto
+import com.example.data.model.EventDto
+import com.example.data.model.InitialMessageDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
-import com.example.data.model.SendMessageRequest
+import com.example.data.model.SendMessageRequestDto
+import com.example.data.model.StartTaskDto
+import com.example.data.model.TextContentDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+/** Failure kinds the UI can branch on without string-matching. */
+sealed class CloudError(message: String) : Exception(message) {
+    class Unauthorized : CloudError("Invalid or missing API key (401). Update it in Settings.")
+    class Api(val code: Int, detail: String) : CloudError("Cloud API error $code: $detail")
+    class Network(cause: Throwable) : CloudError("Network error: ${cause.message ?: "connection failed"}")
+}
 
 class OpenHandsRepository(
-    private val context: Context,
-    private val database: AppDatabase
+    private val settings: ApiSettings,
+    private val database: AppDatabase,
+    private val apiProvider: () -> OpenHandsApiService,
+    private val now: () -> Long = System::currentTimeMillis
 ) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("openhands_prefs", Context.MODE_PRIVATE)
-
     private val conversationDao = database.conversationDao()
     private val eventDao = database.eventDao()
     private val templateDao = database.templateDao()
 
-    var apiKey: String
-        get() {
-            val key = prefs.getString("api_key", BuildConfig.OPENHANDS_API_KEY) ?: ""
-            return if (key == "OPENHANDS_API_KEY_PLACEHOLDER") "" else key
-        }
-        set(value) = prefs.edit().putString("api_key", value.trim()).apply()
+    private val api: OpenHandsApiService get() = apiProvider()
 
-    var baseUrl: String
-        get() = prefs.getString("base_url", "https://app.all-hands.dev") ?: "https://app.all-hands.dev"
-        set(value) = prefs.edit().putString("base_url", value.trim()).apply()
+    /** conversationId → start-task id, so polling uses the right id even when
+     *  the create response already carried the conversation id (docs §2.2). */
+    private val startTaskIds = ConcurrentHashMap<String, String>()
 
-    private var apiService: OpenHandsApiService = createApiService()
+    fun startTaskIdFor(conversationId: String): String = startTaskIds[conversationId] ?: conversationId
 
-    private fun createApiService(): OpenHandsApiService {
-        return ApiClient.create(
-            baseUrlProvider = { baseUrl },
-            apiKeyProvider = { apiKey }
-        )
-    }
+    // ---- Config -------------------------------------------------------------
 
     fun updateConfig(newKey: String, newUrl: String) {
-        apiKey = newKey
-        baseUrl = if (newUrl.isNotBlank()) newUrl else "https://app.all-hands.dev"
-        apiService = createApiService()
+        settings.apiKey = newKey
+        settings.baseUrl = newUrl
     }
 
-    // Reactive streams from Room
+    fun isConfigured(): Boolean = settings.hasApiKey()
+
+    /** Returns the stored key so the UI can keep it when re-saving settings. */
+    fun storedApiKey(): String = settings.apiKey
+
+    // ---- Reactive local streams ----------------------------------------------
+
     val conversationsFlow: Flow<List<OpenHandsConversation>> =
         conversationDao.getAllConversations().map { list -> list.map { it.toDomain() } }
 
     val templatesFlow: Flow<List<PromptTemplate>> =
         templateDao.getAllTemplates().map { list -> list.map { it.toDomain() } }
 
-    fun getConversationFlow(id: String): Flow<OpenHandsConversation?> =
-        conversationDao.getConversationById(id).map { it?.toDomain() }
-
     fun getEventsFlow(conversationId: String): Flow<List<AgentEvent>> =
         eventDao.getEventsForConversation(conversationId).map { list -> list.map { it.toDomain() } }
 
+    // ---- Health / credits -----------------------------------------------------
+
     suspend fun checkHealth(): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val response = apiService.checkHealth()
-            if (response.isSuccessful) {
-                Result.success("OpenHands Cloud API online (HTTP ${response.code()})")
-            } else {
-                Result.failure(Exception("Cloud status code: ${response.code()} ${response.message()}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+        call("health") { api.checkHealth() }.map { body ->
+            "Connected — service status: ${body?.status ?: "ok"}"
         }
     }
 
-    suspend fun refreshConversations(): Result<List<OpenHandsConversation>> = withContext(Dispatchers.IO) {
-        try {
-            val response = apiService.listConversations()
-            if (response.isSuccessful) {
-                val rawBody = response.body()?.string() ?: ""
-                val dtoList = ApiClient.parseConversationList(rawBody)
-                val entities = dtoList.map { dto ->
-                    ConversationEntity(
-                        id = dto.resolvedId,
-                        title = dto.title ?: "Task #${dto.resolvedId.take(8)}",
-                        status = dto.status ?: "READY",
-                        selectedRepository = dto.selectedRepository,
-                        createdAt = System.currentTimeMillis() - 60000,
-                        updatedAt = System.currentTimeMillis(),
-                        cost = dto.cost ?: 0.0,
-                        messageCount = dto.messageCount ?: 1,
-                        lastMessage = dto.lastMessage
-                    )
-                }
-                if (entities.isNotEmpty()) {
-                    conversationDao.insertConversations(entities)
-                }
-                val result = conversationDao.getAllConversations()
-                Result.success(entities.map { it.toDomain() })
-            } else {
-                if (response.code() == 401) {
-                    Result.failure(Exception("Invalid or missing OpenHands API key (401 Unauthorized). Please update in Settings."))
-                } else {
-                    Result.failure(Exception("Failed to fetch conversations (HTTP ${response.code()})"))
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    suspend fun getCredits(): Result<CloudCredits> = withContext(Dispatchers.IO) {
+        call("credits") { api.getCredits() }.map { body -> CloudCredits(body?.credits) }
     }
 
-    suspend fun createConversation(
-        prompt: String,
-        repository: String?
-    ): Result<String> = withContext(Dispatchers.IO) {
-        val cleanRepo = repository?.trim()?.ifEmpty { null }
-        val req = CreateConversationRequest(
-            initialMessage = InitialMessage(
-                content = listOf(MessageContent(type = "text", text = prompt))
-            ),
-            selectedRepository = cleanRepo
-        )
+    // ---- Conversations ---------------------------------------------------------
 
-        try {
-            val response = apiService.createConversation(req)
-            if (response.isSuccessful) {
-                val rawBody = response.body()?.string() ?: ""
-                val dto = ApiClient.parseConversation(rawBody)
-                val convId = dto?.resolvedId ?: UUID.randomUUID().toString()
-
-                val title = if (prompt.length > 50) prompt.take(47) + "..." else prompt
-                val entity = ConversationEntity(
-                    id = convId,
-                    title = dto?.title ?: title,
-                    status = dto?.status ?: "WORKING",
-                    selectedRepository = cleanRepo,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    cost = 0.01,
-                    messageCount = 1,
-                    lastMessage = prompt
-                )
-                conversationDao.insertConversation(entity)
-
-                // Insert initial user event
-                eventDao.insertEvent(
-                    AgentEventEntity(
-                        id = UUID.randomUUID().toString(),
-                        conversationId = convId,
-                        timestamp = System.currentTimeMillis(),
-                        source = "user",
-                        actionType = "message",
-                        content = prompt,
-                        detail = null
-                    )
-                )
-
-                // Insert initial agent acknowledgment event
-                eventDao.insertEvent(
-                    AgentEventEntity(
-                        id = UUID.randomUUID().toString(),
-                        conversationId = convId,
-                        timestamp = System.currentTimeMillis() + 100,
-                        source = "agent",
-                        actionType = "thought",
-                        content = "Starting workspace sandbox. Cloning repository ${cleanRepo ?: "workspace"} and initializing tools.",
-                        detail = null
-                    )
-                )
-
-                Result.success(convId)
-            } else {
-                if (response.code() == 401) {
-                    Result.failure(Exception("OpenHands Cloud API Key required. Please configure in Settings."))
-                } else {
-                    // Fallback to local task creation if cloud returns error
-                    val localId = "local-" + UUID.randomUUID().toString().take(8)
-                    val title = if (prompt.length > 50) prompt.take(47) + "..." else prompt
-                    val entity = ConversationEntity(
-                        id = localId,
-                        title = title,
-                        status = "WORKING",
-                        selectedRepository = cleanRepo,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis(),
-                        cost = 0.0,
-                        messageCount = 1,
-                        lastMessage = prompt
-                    )
-                    conversationDao.insertConversation(entity)
-                    eventDao.insertEvent(
-                        AgentEventEntity(
-                            id = UUID.randomUUID().toString(),
-                            conversationId = localId,
-                            timestamp = System.currentTimeMillis(),
-                            source = "user",
-                            actionType = "message",
-                            content = prompt,
-                            detail = null
-                        )
-                    )
-                    simulateAgentWorking(localId, prompt, cleanRepo)
-                    Result.success(localId)
-                }
+    suspend fun refreshConversations(@Suppress("UNUSED_PARAMETER") showFeedback: Boolean = true): Result<List<OpenHandsConversation>> =
+        withContext(Dispatchers.IO) {
+            call("list conversations") { api.listConversations() }.map { dtoList ->
+                val entities = dtoList.map { it.toEntity(now()) }
+                if (entities.isNotEmpty()) conversationDao.insertConversations(entities)
+                entities.map { it.toDomain() }
             }
-        } catch (e: Exception) {
-            // Local fallback simulation for testing without active network
-            val localId = "offline-" + UUID.randomUUID().toString().take(8)
-            val title = if (prompt.length > 50) prompt.take(47) + "..." else prompt
-            val entity = ConversationEntity(
-                id = localId,
-                title = title,
-                status = "WORKING",
-                selectedRepository = cleanRepo,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-                cost = 0.0,
-                messageCount = 1,
-                lastMessage = prompt
+        }
+
+    suspend fun searchConversationsRemote(query: String): Result<List<OpenHandsConversation>> =
+        withContext(Dispatchers.IO) {
+            call("search conversations") { api.searchConversations(query) }.map { page ->
+                val dtoList = page?.conversations ?: page?.items ?: page?.results ?: emptyList()
+                dtoList.map { it.toEntity(now()) }
+            }
+        }
+
+    /**
+     * Launches a task. Returns the conversation id resolved from the start task.
+     * Persists an optimistic local row so the detail screen can open immediately.
+     */
+    suspend fun createConversation(prompt: String, repository: String?): Result<String> =
+        withContext(Dispatchers.IO) {
+            if (prompt.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Task prompt is empty"))
+            }
+            val cleanRepo = repository?.trim()?.ifEmpty { null }
+            val request = CreateConversationRequestDto(
+                initialMessage = InitialMessageDto(
+                    content = listOf(TextContentDto(text = prompt))
+                ),
+                selectedRepository = cleanRepo
             )
-            conversationDao.insertConversation(entity)
-            eventDao.insertEvent(
-                AgentEventEntity(
-                    id = UUID.randomUUID().toString(),
-                    conversationId = localId,
-                    timestamp = System.currentTimeMillis(),
-                    source = "user",
-                    actionType = "message",
-                    content = prompt,
-                    detail = null
-                )
-            )
-            simulateAgentWorking(localId, prompt, cleanRepo)
-            Result.success(localId)
-        }
-    }
-
-    suspend fun refreshEvents(conversationId: String): Result<List<AgentEvent>> = withContext(Dispatchers.IO) {
-        try {
-            val response = apiService.getEvents(conversationId)
-            if (response.isSuccessful) {
-                val rawBody = response.body()?.string() ?: ""
-                val events = ApiClient.parseEventList(rawBody)
-                val entities = events.map { ev ->
-                    AgentEventEntity(
-                        id = ev.id ?: UUID.randomUUID().toString(),
-                        conversationId = conversationId,
-                        timestamp = System.currentTimeMillis(),
-                        source = ev.source ?: "agent",
-                        actionType = ev.action ?: ev.type ?: "message",
-                        content = ev.thought ?: ev.message ?: ev.action ?: "Event received",
-                        detail = ev.observation ?: ev.args?.toString(),
-                        isError = false
-                    )
-                }
-                if (entities.isNotEmpty()) {
-                    eventDao.insertEvents(entities)
-                }
-                Result.success(entities.map { it.toDomain() })
-            } else {
-                val localEvents = eventDao.getEventsDirect(conversationId).map { it.toDomain() }
-                Result.success(localEvents)
+            call("create conversation") { api.createConversation(request) }.mapCatching { start ->
+                persistStartTask(start, prompt, cleanRepo)
             }
-        } catch (e: Exception) {
-            val localEvents = eventDao.getEventsDirect(conversationId).map { it.toDomain() }
-            Result.success(localEvents)
         }
-    }
 
-    suspend fun sendMessage(conversationId: String, text: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val userEventId = UUID.randomUUID().toString()
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = userEventId,
+    /** Polls the start task; returns the conversation id once the server reports READY. */
+    suspend fun pollStartTask(startTaskId: String): Result<StartTaskDto> =
+        withContext(Dispatchers.IO) {
+            call("start task") { api.getStartTasks(startTaskId) }.mapCatching { list ->
+                list.firstOrNull { it.id == startTaskId || list.size == 1 }
+                    ?: throw IllegalStateException("Start task $startTaskId not found")
+            }
+        }
+
+    suspend fun sendMessage(conversationId: String, text: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (text.isBlank()) return@withContext Result.success(Unit)
+            insertLocalEvent(
                 conversationId = conversationId,
-                timestamp = System.currentTimeMillis(),
                 source = "user",
                 actionType = "message",
-                content = text,
-                detail = null
+                content = text
             )
-        )
+            call("send message") {
+                api.sendMessage(conversationId, SendMessageRequestDto(content = listOf(TextContentDto(text = text))))
+            }.map { }
+        }
 
-        try {
-            val req = SendMessageRequest(listOf(MessageContent(type = "text", text = text)))
-            val response = apiService.sendMessage(conversationId, req)
-            if (response.isSuccessful) {
-                refreshEvents(conversationId)
-            } else {
-                simulateAgentResponse(conversationId, text)
+    suspend fun refreshEvents(conversationId: String): Result<List<AgentEvent>> =
+        withContext(Dispatchers.IO) {
+            call("events") { api.searchEvents(conversationId) }.map { page ->
+                val dtos = page?.events ?: page?.items ?: emptyList()
+                val entities = dtos.map { it.toEntity(conversationId) }
+                if (entities.isNotEmpty()) eventDao.insertEvents(entities)
+                entities.map { it.toDomain() }
             }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            simulateAgentResponse(conversationId, text)
-            Result.success(Unit)
+        }
+
+    suspend fun deleteConversation(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        call("delete conversation") { api.deleteConversation(conversationId) }.map {
+            conversationDao.deleteConversation(conversationId)
+            eventDao.deleteEventsForConversation(conversationId)
         }
     }
 
-    private suspend fun simulateAgentWorking(conversationId: String, prompt: String, repo: String?) {
-        val now = System.currentTimeMillis()
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 400,
-                source = "agent",
-                actionType = "thought",
-                content = "Analyzing task requirements: \"$prompt\". Inspecting directory structure and codebase files.",
-                detail = null
+    // ---- Local helpers ---------------------------------------------------------
+
+    fun localConversation(id: String): Flow<OpenHandsConversation?> =
+        conversationDao.getConversationById(id).map { it?.toDomain() }
+
+    private suspend fun persistStartTask(
+        start: StartTaskDto,
+        prompt: String,
+        repo: String?
+    ): String {
+        val conversationId = start.appConversationId
+        val entityId = conversationId ?: start.id ?: UUID.randomUUID().toString()
+        start.id?.let { startTaskIds[entityId] = it }
+        val title = if (prompt.length > 60) prompt.take(57) + "…" else prompt
+        conversationDao.insertConversation(
+            ConversationEntity(
+                id = entityId,
+                title = title,
+                sandboxStatus = null,
+                executionStatus = null,
+                rawStatus = start.status ?: "WORKING",
+                repository = repo,
+                createdAt = now(),
+                updatedAt = now(),
+                cost = 0.0,
+                lastMessage = prompt
             )
         )
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 800,
-                source = "agent",
-                actionType = "bash",
-                content = "$ git status && ls -la",
-                detail = "On branch main\nYour branch is up to date with 'origin/main'.\n\nChanges not staged for commit:\n  (use \"git add <file>...\" to update what will be committed)\n\nUntracked files:\n  package.json\n  src/\n\nno changes added to commit"
-            )
+        insertLocalEvent(
+            conversationId = entityId,
+            source = "user",
+            actionType = "message",
+            content = prompt
         )
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 1400,
-                source = "agent",
-                actionType = "thought",
-                content = "Identified target files for modification. Preparing unified diff patch and running test suite in Docker container.",
-                detail = null
-            )
-        )
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 2000,
-                source = "agent",
-                actionType = "edit",
-                content = "FileEdit: Updated module implementation with requested changes.",
-                detail = "--- a/src/index.ts\n+++ b/src/index.ts\n@@ -12,4 +12,6 @@\n- export function run() { return false; }\n+ export function run() {\n+   // Fixed per OpenHands task prompt\n+   return true;\n+ }"
-            )
-        )
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 2600,
-                source = "agent",
-                actionType = "bash",
-                content = "$ npm test",
-                detail = "PASS src/index.test.ts (1.42s)\n  ✓ runs correctly with expected output\n  ✓ handles edge case gracefully\n\nTest Suites: 1 passed, 1 total\nTests:       2 passed, 2 total\nSnapshots:   0 total\nTime:        1.89s"
-            )
-        )
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 3200,
-                source = "agent",
-                actionType = "message",
-                content = "I have successfully analyzed the repository, implemented the requested changes, and verified that all tests are passing. Would you like me to commit and prepare a GitHub Pull Request?",
-                detail = null
-            )
-        )
-        conversationDao.updateStatus(conversationId, "READY", System.currentTimeMillis())
+        return entityId
     }
 
-    private suspend fun simulateAgentResponse(conversationId: String, userText: String) {
-        val now = System.currentTimeMillis()
-        val lower = userText.lowercase()
-        val reply = when {
-            "test" in lower -> {
-                eventDao.insertEvent(
-                    AgentEventEntity(
-                        id = UUID.randomUUID().toString(),
-                        conversationId = conversationId,
-                        timestamp = now + 200,
-                        source = "agent",
-                        actionType = "bash",
-                        content = "$ pytest tests/ -v",
-                        detail = "tests/test_core.py::test_initialization PASSED\ntests/test_core.py::test_execution PASSED\n================ 2 passed in 0.35s ================"
-                    )
+    private suspend fun insertLocalEvent(
+        conversationId: String,
+        source: String,
+        actionType: String?,
+        content: String,
+        detail: String? = null
+    ) {
+        eventDao.insertEvents(
+            listOf(
+                AgentEventEntity(
+                    id = UUID.randomUUID().toString(),
+                    conversationId = conversationId,
+                    timestamp = now(),
+                    source = source,
+                    actionType = actionType,
+                    content = content,
+                    detail = detail
                 )
-                "Test suite executed cleanly. 2 passed, 0 failures."
-            }
-            "git" in lower || "pr" in lower || "commit" in lower -> {
-                eventDao.insertEvent(
-                    AgentEventEntity(
-                        id = UUID.randomUUID().toString(),
-                        conversationId = conversationId,
-                        timestamp = now + 200,
-                        source = "agent",
-                        actionType = "bash",
-                        content = "$ git add . && git commit -m \"fix: update implementation via OpenHands agent\"",
-                        detail = "[main a83d91c] fix: update implementation via OpenHands agent\n 2 files changed, 14 insertions(+), 3 deletions(-)"
-                    )
-                )
-                "Committed changes with git SHA `a83d91c`. Ready to push or open Pull Request."
-            }
-            else -> "Acknowledged! Executing follow-up step in OpenHands sandbox environment."
+            )
+        )
+    }
+
+    private fun ConversationDto.toEntity(fallbackTime: Long): ConversationEntity = ConversationEntity(
+        id = resolvedId.ifBlank { UUID.randomUUID().toString() },
+        title = title ?: "Conversation",
+        sandboxStatus = sandboxStatus,
+        executionStatus = executionStatus,
+        rawStatus = status,
+        repository = selectedRepository,
+        createdAt = parseTimestamp(createdAt) ?: fallbackTime,
+        updatedAt = parseTimestamp(updatedAt) ?: parseTimestamp(createdAt) ?: fallbackTime,
+        cost = cost ?: 0.0,
+        lastMessage = lastMessage
+    )
+
+    private fun EventDto.toEntity(conversationId: String): AgentEventEntity {
+        val action = action ?: kind?.substringAfterLast('.')
+        val content = when {
+            !message.isNullOrBlank() -> message!!
+            !thought.isNullOrBlank() -> thought!!
+            !content.isNullOrBlank() -> content!!
+            !observation.isNullOrBlank() -> observation!!
+            args?.get("command") is String -> args["command"] as String
+            else -> "(no content)"
         }
-
-        eventDao.insertEvent(
-            AgentEventEntity(
-                id = UUID.randomUUID().toString(),
-                conversationId = conversationId,
-                timestamp = now + 500,
-                source = "agent",
-                actionType = "message",
-                content = reply,
-                detail = null
-            )
+        return AgentEventEntity(
+            id = id ?: UUID.randomUUID().toString(),
+            conversationId = conversationId,
+            timestamp = parseTimestamp(timestamp) ?: now(),
+            source = source ?: "agent",
+            actionType = action,
+            content = content,
+            detail = observation?.takeIf { it != content },
+            isError = observation?.contains("error", ignoreCase = true) == true
         )
-        conversationDao.updateStatus(conversationId, "READY", System.currentTimeMillis())
     }
 
-    suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
+    /**
+     * Seeds templates always; seeds clearly-labeled demo conversations only when
+     * no API key is configured (demo mode) and the store is empty.
+     */
+    suspend fun seedLocalData() = withContext(Dispatchers.IO) {
+        seedTemplatesIfEmpty()
+        if (settings.hasApiKey()) return@withContext
+        val existing = conversationDao.getAllConversations().first()
+        if (existing.isEmpty()) {
+            conversationDao.insertConversations(DEMO_CONVERSATIONS(now()))
+            eventDao.insertEvents(DEMO_EVENTS(now()))
+        }
+    }
+
+    suspend fun seedTemplatesIfEmpty() {
         if (templateDao.count() == 0) {
-            val defaultTemplates = listOf(
-                SavedTemplateEntity(
-                    id = "t1",
-                    title = "Fix Bug or Failing Test",
-                    category = "Debugging",
-                    prompt = "Locate the cause of the failing test or error log in this repository, reproduce the issue, apply a minimal fix, and verify tests pass.",
-                    defaultRepo = "All-Hands-AI/OpenHands"
-                ),
-                SavedTemplateEntity(
-                    id = "t2",
-                    title = "Add Comprehensive Unit Tests",
-                    category = "Testing",
-                    prompt = "Write comprehensive unit and integration tests for all newly added endpoints and service functions, achieving >85% test coverage.",
-                    defaultRepo = null
-                ),
-                SavedTemplateEntity(
-                    id = "t3",
-                    title = "Code Review & Refactoring",
-                    category = "Refactoring",
-                    prompt = "Audit the codebase for performance bottlenecks, redundant abstractions, and code smells. Refactor into clean, modern patterns without breaking public APIs.",
-                    defaultRepo = null
-                ),
-                SavedTemplateEntity(
-                    id = "t4",
-                    title = "Security & Dependency Audit",
-                    category = "Security",
-                    prompt = "Run vulnerability scan on dependencies, check for insecure input handling or secrets leakage, and upgrade vulnerable packages.",
-                    defaultRepo = null
-                ),
-                SavedTemplateEntity(
-                    id = "t5",
-                    title = "Docker & CI/CD Pipeline Setup",
-                    category = "DevOps",
-                    prompt = "Create a multi-stage Dockerfile and GitHub Actions workflow to build, lint, and run tests on every push and pull request.",
-                    defaultRepo = null
-                ),
-                SavedTemplateEntity(
-                    id = "t6",
-                    title = "Generate API Documentation",
-                    category = "Documentation",
-                    prompt = "Analyze all exposed endpoints, data models, and request/response payloads, and generate clean Markdown API documentation with curl examples.",
-                    defaultRepo = null
-                )
-            )
-            templateDao.insertTemplates(defaultTemplates)
-        }
-
-        // Check if conversations empty, insert welcome showcase tasks
-        val convDirect = conversationDao.getConversationDirect("sample-swe-1")
-        if (convDirect == null) {
-            val sample1 = ConversationEntity(
-                id = "sample-swe-1",
-                title = "SWE-Bench: Fix token validation in auth middleware",
-                status = "READY",
-                selectedRepository = "All-Hands-AI/OpenHands",
-                createdAt = System.currentTimeMillis() - 3600000 * 3,
-                updatedAt = System.currentTimeMillis() - 1800000,
-                cost = 0.08,
-                messageCount = 6,
-                lastMessage = "Changes verified. 14 unit tests passed."
-            )
-            val sample2 = ConversationEntity(
-                id = "sample-swe-2",
-                title = "Implement rate limiting middleware for FastAPI",
-                status = "WORKING",
-                selectedRepository = "octocat/Hello-World",
-                createdAt = System.currentTimeMillis() - 1800000,
-                updatedAt = System.currentTimeMillis() - 300000,
-                cost = 0.04,
-                messageCount = 3,
-                lastMessage = "Running sandbox tests..."
-            )
-            conversationDao.insertConversations(listOf(sample1, sample2))
-
-            // Seed events for sample 1
-            val baseTime = System.currentTimeMillis() - 3600000 * 3
-            val sample1Events = listOf(
-                AgentEventEntity(
-                    id = "e1",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime,
-                    source = "user",
-                    actionType = "message",
-                    content = "Fix token validation in auth middleware. The Bearer token parsing crashes when header contains extra whitespace.",
-                    detail = null
-                ),
-                AgentEventEntity(
-                    id = "e2",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime + 20000,
-                    source = "agent",
-                    actionType = "thought",
-                    content = "I will locate auth middleware in `src/middleware/auth.py` and inspect how `Authorization` header is stripped and split.",
-                    detail = null
-                ),
-                AgentEventEntity(
-                    id = "e3",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime + 45000,
-                    source = "agent",
-                    actionType = "bash",
-                    content = "$ grep -rn \"Bearer\" src/",
-                    detail = "src/middleware/auth.py:42:    token = auth_header.split('Bearer ')[1]\nsrc/middleware/auth.py:88:    logger.debug('Validating Bearer token')"
-                ),
-                AgentEventEntity(
-                    id = "e4",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime + 70000,
-                    source = "agent",
-                    actionType = "edit",
-                    content = "FileEdit: src/middleware/auth.py",
-                    detail = "@@ -40,4 +40,5 @@\n- token = auth_header.split('Bearer ')[1]\n+ parts = auth_header.strip().split()\n+ if len(parts) != 2 or parts[0].lower() != 'bearer':\n+     raise HTTPException(status_code=401, detail='Invalid Bearer format')\n+ token = parts[1]"
-                ),
-                AgentEventEntity(
-                    id = "e5",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime + 110000,
-                    source = "agent",
-                    actionType = "bash",
-                    content = "$ pytest tests/test_auth.py -v",
-                    detail = "tests/test_auth.py::test_valid_bearer PASSED\ntests/test_auth.py::test_bearer_with_whitespace PASSED\ntests/test_auth.py::test_malformed_bearer PASSED\n================ 3 passed in 0.42s ================"
-                ),
-                AgentEventEntity(
-                    id = "e6",
-                    conversationId = "sample-swe-1",
-                    timestamp = baseTime + 130000,
-                    source = "agent",
-                    actionType = "message",
-                    content = "Resolved the crash by safely trimming the Authorization header and validating that exactly two parts exist. All test suites pass successfully!",
-                    detail = null
-                )
-            )
-            eventDao.insertEvents(sample1Events)
-
-            // Seed events for sample 2
-            val sample2Events = listOf(
-                AgentEventEntity(
-                    id = "e20",
-                    conversationId = "sample-swe-2",
-                    timestamp = System.currentTimeMillis() - 1800000,
-                    source = "user",
-                    actionType = "message",
-                    content = "Implement rate limiting middleware for FastAPI using sliding window in memory.",
-                    detail = null
-                ),
-                AgentEventEntity(
-                    id = "e21",
-                    conversationId = "sample-swe-2",
-                    timestamp = System.currentTimeMillis() - 1700000,
-                    source = "agent",
-                    actionType = "thought",
-                    content = "Creating new middleware class `RateLimitMiddleware` with thread-safe deque for sliding window timestamp tracking.",
-                    detail = null
-                ),
-                AgentEventEntity(
-                    id = "e22",
-                    conversationId = "sample-swe-2",
-                    timestamp = System.currentTimeMillis() - 300000,
-                    source = "agent",
-                    actionType = "bash",
-                    content = "$ docker exec -it sandbox pytest tests/test_ratelimit.py",
-                    detail = "[Sandbox: running in ephemeral container...]\nTests in progress"
-                )
-            )
-            eventDao.insertEvents(sample2Events)
+            templateDao.insertTemplates(DEFAULT_TEMPLATES)
         }
     }
 
-    suspend fun clearCache() = withContext(Dispatchers.IO) {
+    suspend fun clearCache() {
         conversationDao.clearAll()
         eventDao.clearAll()
+    }
+
+    private inline fun <T : Any> call(label: String, block: () -> retrofit2.Response<T>): Result<T> {
+        return try {
+            val response = block()
+            val body = response.body()
+            when {
+                response.isSuccessful && body != null -> Result.success(body)
+                response.isSuccessful -> Result.failure(
+                    CloudError.Api(response.code(), "$label returned an empty body")
+                )
+                response.code() == 401 -> Result.failure(CloudError.Unauthorized())
+                else -> Result.failure(
+                    CloudError.Api(response.code(), response.errorBody()?.string()?.take(300) ?: response.message())
+                )
+            }
+        } catch (e: java.io.IOException) {
+            Result.failure(CloudError.Network(e))
+        } catch (e: Exception) {
+            Result.failure(CloudError.Network(e))
+        }
+    }
+
+    companion object {
+        fun parseTimestamp(raw: String?): Long? {
+            if (raw.isNullOrBlank()) return null
+            return try {
+                parseIsoUtc(raw)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        /**
+         * Minimal ISO-8601 parser ("2025-01-15T10:30:00.123Z"; numeric offsets accepted).
+         * Pure Kotlin so the app stays minSdk 24 without core-library desugaring.
+         */
+        private fun parseIsoUtc(raw: String): Long {
+            val text = raw.trim()
+            val tIndex = text.indexOfFirst { it == 'T' || it == ' ' }
+            val datePart = if (tIndex >= 0) text.substring(0, tIndex) else text
+            val timePart = if (tIndex >= 0) text.substring(tIndex + 1) else ""
+
+            val date = datePart.split('-')
+            if (date.size != 3) throw IllegalArgumentException("Invalid date: $datePart")
+            val year = date[0].toInt()
+            val month = date[1].toInt()
+            val day = date[2].toInt()
+            if (month !in 1..12 || day !in 1..31) throw IllegalArgumentException("Invalid date: $datePart")
+            val dayMillis = daysSinceEpoch(year, month, day) * 86_400_000L
+            if (timePart.isEmpty()) return dayMillis
+
+            var time = timePart
+            if (time.endsWith("Z") || time.endsWith("z")) time = time.dropLast(1)
+
+            var offsetMinutes = 0
+            val signPos = time.indexOfAny(charArrayOf('+', '-'))
+            if (signPos >= 0) {
+                val isNegative = time[signPos] == '-'
+                val offset = time.substring(signPos + 1).replace(":", "")
+                time = time.substring(0, signPos)
+                if (offset.isNotEmpty()) {
+                    val hours = offset.take(2).toInt()
+                    val minutes = if (offset.length >= 4) offset.substring(2, 4).toInt() else 0
+                    offsetMinutes = hours * 60 + minutes
+                    if (isNegative) offsetMinutes = -offsetMinutes
+                }
+            }
+
+            var millis = 0L
+            val fracPos = time.indexOf('.')
+            if (fracPos >= 0) {
+                millis = time.substring(fracPos + 1).padEnd(3, '0').take(3).toLong()
+                time = time.substring(0, fracPos)
+            }
+
+            val parts = time.split(':')
+            val hour = parts[0].toInt()
+            val minute = if (parts.size > 1) parts[1].toInt() else 0
+            val second = if (parts.size > 2) parts[2].toInt() else 0
+
+            return dayMillis + hour * 3_600_000L + minute * 60_000L + second * 1_000L + millis -
+                offsetMinutes * 60_000L
+        }
+
+        /** Days from 1970-01-01 for a civil date (Howard Hinnant's days_from_civil). */
+        private fun daysSinceEpoch(year: Int, month: Int, day: Int): Long {
+            val y = year.toLong() - if (month <= 2) 1 else 0
+            val era = (if (y >= 0) y else y - 399) / 400
+            val yoe = y - era * 400
+            val doy = (153 * (if (month > 2) month - 3 else month + 9) + 2) / 5 + day - 1
+            val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+            return era * 146_097 + doe - 719_468
+        }
+
+        internal fun DEMO_CONVERSATIONS(now: Long): List<ConversationEntity> = listOf(
+            ConversationEntity(
+                id = "demo-1",
+                title = "Fix token validation in auth middleware",
+                sandboxStatus = "RUNNING",
+                executionStatus = "finished",
+                rawStatus = null,
+                repository = "All-Hands-AI/OpenHands",
+                createdAt = now - 7_200_000,
+                updatedAt = now - 3_600_000,
+                cost = 0.08,
+                lastMessage = "All 14 unit tests pass — ready for PR."
+            ),
+            ConversationEntity(
+                id = "demo-2",
+                title = "Implement rate limiting middleware for FastAPI",
+                sandboxStatus = "RUNNING",
+                executionStatus = "running",
+                rawStatus = null,
+                repository = "octocat/Hello-World",
+                createdAt = now - 3_600_000,
+                updatedAt = now - 120_000,
+                cost = 0.04,
+                lastMessage = "Writing sliding-window limiter tests…"
+            ),
+            ConversationEntity(
+                id = "demo-3",
+                title = "Upgrade dependencies + security audit",
+                sandboxStatus = "STARTING",
+                executionStatus = null,
+                rawStatus = "PREPARING_REPOSITORY",
+                repository = "example/api-service",
+                createdAt = now - 600_000,
+                updatedAt = now - 60_000,
+                cost = 0.0,
+                lastMessage = null
+            )
+        )
+
+        internal fun DEMO_EVENTS(now: Long): List<AgentEventEntity> = listOf(
+            AgentEventEntity(
+                id = "demo-e1",
+                conversationId = "demo-1",
+                timestamp = now - 7_200_000,
+                source = "user",
+                actionType = "message",
+                content = "Bearer token parsing crashes when the Authorization header has extra whitespace. Fix and cover with tests."
+            ),
+            AgentEventEntity(
+                id = "demo-e2",
+                conversationId = "demo-1",
+                timestamp = now - 7_100_000,
+                source = "agent",
+                actionType = "thought",
+                content = "Inspect how the auth middleware splits the Authorization header, then harden the parser."
+            ),
+            AgentEventEntity(
+                id = "demo-e3",
+                conversationId = "demo-1",
+                timestamp = now - 6_900_000,
+                source = "agent",
+                actionType = "bash",
+                content = "grep -rn \"Bearer\" src/",
+                detail = "src/middleware/auth.py:42: token = auth_header.split('Bearer ')[1]"
+            ),
+            AgentEventEntity(
+                id = "demo-e4",
+                conversationId = "demo-1",
+                timestamp = now - 6_500_000,
+                source = "agent",
+                actionType = "edit",
+                content = "src/middleware/auth.py",
+                detail = "@@ -40 +41,4 @@\n- token = auth_header.split('Bearer ')[1]\n+ parts = auth_header.strip().split()\n+ if len(parts) != 2 or parts[0].lower() != 'bearer':\n+     raise HTTPException(401, 'Invalid Bearer format')"
+            ),
+            AgentEventEntity(
+                id = "demo-e5",
+                conversationId = "demo-1",
+                timestamp = now - 4_000_000,
+                source = "agent",
+                actionType = "message",
+                content = "Fixed the parser and added whitespace tests — 14/14 passing. Want me to open a PR?"
+            )
+        )
+
+        internal val DEFAULT_TEMPLATES: List<SavedTemplateEntity> = listOf(
+            SavedTemplateEntity(
+                id = "t1",
+                title = "Fix bug or failing test",
+                category = "Debugging",
+                prompt = "Locate the cause of the failing test or error, reproduce it, apply a minimal fix, and verify the test suite passes.",
+                defaultRepo = "All-Hands-AI/OpenHands"
+            ),
+            SavedTemplateEntity(
+                id = "t2",
+                title = "Add comprehensive unit tests",
+                category = "Testing",
+                prompt = "Write unit and integration tests for the recently changed modules and report achieved coverage.",
+                defaultRepo = null
+            ),
+            SavedTemplateEntity(
+                id = "t3",
+                title = "Code review & refactor",
+                category = "Refactoring",
+                prompt = "Audit the codebase for code smells and redundant abstractions; refactor without breaking public APIs.",
+                defaultRepo = null
+            ),
+            SavedTemplateEntity(
+                id = "t4",
+                title = "Security & dependency audit",
+                category = "Security",
+                prompt = "Scan dependencies for known vulnerabilities, check input handling and secrets hygiene, and upgrade vulnerable packages.",
+                defaultRepo = null
+            ),
+            SavedTemplateEntity(
+                id = "t5",
+                title = "Docker & CI/CD setup",
+                category = "DevOps",
+                prompt = "Create a multi-stage Dockerfile and a GitHub Actions workflow that builds, lints, and tests on every push.",
+                defaultRepo = null
+            ),
+            SavedTemplateEntity(
+                id = "t6",
+                title = "Generate API documentation",
+                category = "Documentation",
+                prompt = "Analyze exposed endpoints and models, then generate concise Markdown API documentation with examples.",
+                defaultRepo = null
+            )
+        )
     }
 }

@@ -1,15 +1,15 @@
-name: Build Android APK
+name: Build & Test Android
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "redesign/canvas-v2" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Test & Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
@@ -26,16 +26,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make build script executable
-        run: chmod +x ./build_apk.sh
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Build APK with script
-        run: ./build_apk.sh --no-daemon
+      - name: Build APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openhands-android-debug-apk
+          name: openhands-canvas-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
+    <!-- Native splash screen: shown on cold start (Android 12+ uses the platform
+         splash, older versions fall back to the compat implementation), then the
+         app theme below takes over once Compose has drawn its first frame. -->
+    <style name="Theme.MyApplication" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyApplication.Base</item>
+    </style>
+
+    <style name="Theme.MyApplication.Base" parent="android:Theme.DeviceDefault.NoActionBar" />
 </resources>
