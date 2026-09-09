@@ -23,6 +23,12 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Stable debug signing: a committed keystore keeps every CI-built debug APK
+  // installable over the previous one. AGP's fallback (a runner-generated
+  // keystore) produces a NEW signature on every CI run, so upgrading a
+  // sideloaded build fails with INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+  val debugKeystoreFile = file("${rootDir}/debug.keystore")
+
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
@@ -31,16 +37,28 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
+    if (debugKeystoreFile.exists()) {
+      create("debugConfig") {
+        storeFile = debugKeystoreFile
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
+    }
   }
 
   buildTypes {
+    debug {
+      if (debugKeystoreFile.exists()) {
+        signingConfig = signingConfigs.getByName("debugConfig")
+      }
+    }
     release {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    // Debug uses AGP's default auto-generated debug keystore — no file to ship.
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
