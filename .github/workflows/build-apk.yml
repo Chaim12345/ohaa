@@ -35,6 +35,9 @@ jobs:
       - name: Upload APK to temp.sh
         # Convenience mirror so the APK is grabbable without GitHub auth (also a
         # fallback when the artifact upload below hits the storage quota).
+        # The APK is zipped first: temp.sh serves GETs as an HTML download page, and
+        # phone browsers that save that page instead of the binary produce a corrupt
+        # APK ("There was a problem parsing the package"). A .zip wrapper survives that.
         # Note: this publishes the debug APK to a public third-party host.
         continue-on-error: true
         run: |
@@ -43,12 +46,15 @@ jobs:
             echo "APK file not found for temp.sh upload."
             exit 1
           fi
-          URL=$(curl -sS --retry 3 -F "file=@${APK_PATH}" https://temp.sh/upload | tr -d '\r\n')
+          ZIP_PATH="${APK_PATH%.apk}.zip"
+          zip -q -j "$ZIP_PATH" "$APK_PATH"
+          URL=$(curl -sS --retry 3 -F "file=@${ZIP_PATH}" https://temp.sh/upload | tr -d '\r\n')
           if [ -z "$URL" ]; then
             echo "temp.sh upload returned no URL."
             exit 1
           fi
           echo "Download (temp.sh, expires after a few days): $URL"
+          echo "Unzip before installing — the .apk is inside the .zip."
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
