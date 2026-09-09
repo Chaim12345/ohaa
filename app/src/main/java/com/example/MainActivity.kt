@@ -122,10 +122,18 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
             events = events,
             isSending = uiState.isSending,
             isDemoMode = uiState.isDemoMode,
+            activeProfile = uiState.activeProfile,
+            gitDiff = uiState.gitDiff,
+            isGitLoading = uiState.isGitLoading,
             onBack = { viewModel.closeDetail() },
             onRefresh = { viewModel.refreshDetail() },
             onSendMessage = { text -> viewModel.sendFollowUp(text) },
-            onDelete = { viewModel.deleteConversation(uiState.detailConversationId!!) }
+            onDelete = { viewModel.deleteConversation(uiState.detailConversationId!!) },
+            onRefreshGit = { viewModel.refreshGitChanges() },
+            onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
+            onModelChanged = { model -> viewModel.setModel(model) },
+            onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) },
+            onResetProfile = { viewModel.resetConversationProfile() }
         )
       } else {
         when (uiState.currentTab) {
@@ -161,13 +169,24 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               launchStage = uiState.launchStage,
               launchStatusText = uiState.launchStatusText,
               isDemoMode = uiState.isDemoMode,
+              activeProfile = uiState.activeProfile,
+              repoResults = uiState.repoSearchResults,
+              branchResults = uiState.repoBranchResults,
+              selectedBranch = uiState.selectedBranch,
+              isSearchingRepos = uiState.isSearchingRepos,
               onPromptChanged = { viewModel.updateNewTaskPrompt(it) },
               onRepoChanged = { viewModel.updateNewTaskRepo(it) },
               onSelectTemplate = { viewModel.applyTemplate(it) },
               onLaunchTask = {
                 if (uiState.isDemoMode) viewModel.setTab(AppTab.SETTINGS)
                 else viewModel.createNewTask()
-              }
+              },
+              onSearchRepositories = { viewModel.searchRepositories() },
+              onSelectRepository = { repo -> viewModel.selectRepository(repo) },
+              onSelectBranch = { branch -> viewModel.updateSelectedBranch(branch) },
+              onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
+              onModelChanged = { model -> viewModel.setModel(model) },
+              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) }
           )
           AppTab.SETTINGS -> SettingsScreen(
               apiKey = uiState.apiKeyInput,
@@ -177,12 +196,16 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               healthOk = uiState.healthOk,
               credits = uiState.credits,
               isDemoMode = uiState.isDemoMode,
+              activeProfile = uiState.activeProfile,
               onApiKeyChanged = { viewModel.updateApiKeyInput(it) },
               onBaseUrlChanged = { viewModel.updateBaseUrlInput(it) },
               onSaveConfig = { viewModel.saveConfig() },
               onTestConnection = { viewModel.testConnection() },
               onClearApiKey = { viewModel.clearApiKey() },
-              onClearCache = { viewModel.clearLocalData() }
+              onClearCache = { viewModel.clearLocalData() },
+              onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
+              onModelChanged = { model -> viewModel.setModel(model) },
+              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) }
           )
         }
       }

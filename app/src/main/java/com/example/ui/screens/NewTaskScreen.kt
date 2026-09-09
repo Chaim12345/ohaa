@@ -28,12 +28,18 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -41,6 +47,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.PromptTemplate
+import com.example.data.model.RepositoryDto
+import com.example.data.model.BranchDto
+import com.example.data.settings.AgentKind
+import com.example.data.settings.AgentProfile
+import com.example.ui.components.AgentProfileDialog
+import com.example.ui.components.ProfileSummaryCard
 import com.example.ui.theme.CanvasPrimary
 import com.example.ui.theme.CanvasPrimaryDeep
 import com.example.ui.viewmodel.LaunchStage
@@ -54,11 +66,23 @@ fun NewTaskScreen(
     launchStage: LaunchStage,
     launchStatusText: String?,
     isDemoMode: Boolean,
+    activeProfile: AgentProfile,
+    repoResults: List<RepositoryDto>,
+    branchResults: List<BranchDto>,
+    selectedBranch: String,
+    isSearchingRepos: Boolean,
     onPromptChanged: (String) -> Unit,
     onRepoChanged: (String) -> Unit,
     onSelectTemplate: (PromptTemplate) -> Unit,
-    onLaunchTask: () -> Unit
+    onLaunchTask: () -> Unit,
+    onSearchRepositories: () -> Unit,
+    onSelectRepository: (RepositoryDto) -> Unit,
+    onSelectBranch: (String) -> Unit,
+    onAgentKindChanged: (AgentKind) -> Unit,
+    onModelChanged: (String) -> Unit,
+    onAcpCommandChanged: (String) -> Unit
 ) {
+    var showProfileDialog by remember { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxSize()
@@ -108,6 +132,74 @@ fun NewTaskScreen(
                 .fillMaxWidth()
                 .testTag("repo_input")
         )
+
+        Spacer(Modifier.height(10.dp))
+
+        OutlinedButton(
+            onClick = onSearchRepositories,
+            enabled = !isSearchingRepos,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("btn_pull_repos")
+        ) {
+            if (isSearchingRepos) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Pulling from provider…")
+            } else {
+                Icon(Icons.Default.Folder, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Pull repositories from git provider")
+            }
+        }
+
+        if (repoResults.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Repositories",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Column(
+                Modifier.padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                repoResults.take(8).forEach { repo ->
+                    AssistChip(
+                        onClick = { onSelectRepository(repo) },
+                        label = { Text(repo.displayName, fontSize = 11.sp, maxLines = 1) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Folder, null, Modifier.size(14.dp), tint = CanvasPrimary)
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    )
+                }
+            }
+        }
+
+        if (branchResults.isNotEmpty() || selectedBranch.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Branch",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(vertical = 6.dp)
+            ) {
+                items(branchResults, key = { it.name }) { branch ->
+                    FilterChip(
+                        selected = selectedBranch == branch.name,
+                        onClick = { onSelectBranch(branch.name) },
+                        label = { Text(branch.name, fontSize = 11.sp, maxLines = 1) }
+                    )
+                }
+            }
+        }
 
         Spacer(Modifier.height(14.dp))
         Text("Quick fill", style = MaterialTheme.typography.titleMedium)
@@ -181,6 +273,12 @@ fun NewTaskScreen(
         }
 
         Spacer(Modifier.height(8.dp))
+        ProfileSummaryCard(
+            profile = activeProfile,
+            onEdit = { showProfileDialog = true }
+        )
+
+        Spacer(Modifier.height(8.dp))
         Button(
             onClick = onLaunchTask,
             enabled = !isLaunching && promptText.isNotBlank(),
@@ -203,5 +301,16 @@ fun NewTaskScreen(
             )
         }
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (showProfileDialog) {
+        AgentProfileDialog(
+            profile = activeProfile,
+            onDismiss = { showProfileDialog = false },
+            onAgentKindChanged = onAgentKindChanged,
+            onModelChanged = onModelChanged,
+            onAcpCommandChanged = onAcpCommandChanged,
+            title = "Agent & LLM · new task"
+        )
     }
 }

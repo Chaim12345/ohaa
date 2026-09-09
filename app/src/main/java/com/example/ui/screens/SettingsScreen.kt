@@ -49,6 +49,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.settings.AgentKind
+import com.example.data.settings.AgentProfile
+import com.example.ui.components.AgentProfileDialog
+import com.example.ui.components.ProfileSummaryCard
 import com.example.ui.theme.CanvasBorder
 import com.example.ui.theme.CanvasPrimary
 import com.example.ui.theme.CanvasPrimaryDeep
@@ -63,15 +67,20 @@ fun SettingsScreen(
     healthOk: Boolean?,
     credits: Double?,
     isDemoMode: Boolean,
+    activeProfile: AgentProfile,
     onApiKeyChanged: (String) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
     onSaveConfig: () -> Unit,
     onTestConnection: () -> Unit,
     onClearApiKey: () -> Unit,
-    onClearCache: () -> Unit
+    onClearCache: () -> Unit,
+    onAgentKindChanged: (AgentKind) -> Unit,
+    onModelChanged: (String) -> Unit,
+    onAcpCommandChanged: (String) -> Unit
 ) {
     var apiKeyVisible by remember { mutableStateOf(false) }
     var showClearCacheConfirmation by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -217,6 +226,20 @@ fun SettingsScreen(
         HorizontalDivider(color = CanvasBorder.copy(alpha = 0.5f))
         Spacer(Modifier.height(16.dp))
 
+        Text("Agent & LLM", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Default agent backend and model for new conversations. You can switch at launch time or mid-session per conversation.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Spacer(Modifier.height(10.dp))
+        ProfileSummaryCard(
+            profile = activeProfile,
+            onEdit = { showProfileDialog = true }
+        )
+        Spacer(Modifier.height(12.dp))
+
         Text("Local data", style = MaterialTheme.typography.titleMedium)
         Text(
             if (isDemoMode) "Demo mode is active — sample conversations are shown."
@@ -262,6 +285,17 @@ fun SettingsScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (showProfileDialog) {
+        AgentProfileDialog(
+            profile = activeProfile,
+            onDismiss = { showProfileDialog = false },
+            onAgentKindChanged = onAgentKindChanged,
+            onModelChanged = onModelChanged,
+            onAcpCommandChanged = onAcpCommandChanged,
+            title = "Agent & LLM · default"
         )
     }
 }

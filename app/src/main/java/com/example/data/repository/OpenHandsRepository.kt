@@ -7,15 +7,21 @@ import com.example.data.local.AgentEventEntity
 import com.example.data.local.ConversationEntity
 import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AgentEvent
+import com.example.data.model.AgentProfileDto
+import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
 import com.example.data.model.ConversationDto
 import com.example.data.model.CreateConversationRequestDto
 import com.example.data.model.EventDto
+import com.example.data.model.GitDiffDto
 import com.example.data.model.InitialMessageDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
+import com.example.data.model.RepositoryDto
 import com.example.data.model.SendMessageRequestDto
 import com.example.data.model.StartTaskDto
+import com.example.data.model.SwitchAcpModelRequest
+import com.example.data.model.SwitchProfileRequest
 import com.example.data.model.TextContentDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -110,7 +116,14 @@ class OpenHandsRepository(
      * Launches a task. Returns the conversation id resolved from the start task.
      * Persists an optimistic local row so the detail screen can open immediately.
      */
-    suspend fun createConversation(prompt: String, repository: String?): Result<String> =
+    suspend fun createConversation(
+        prompt: String,
+        repository: String?,
+        branch: String? = null,
+        gitProvider: String? = null,
+        llmModel: String? = null,
+        agentType: String = "default"
+    ): Result<String> =
         withContext(Dispatchers.IO) {
             if (prompt.isBlank()) {
                 return@withContext Result.failure(IllegalArgumentException("Task prompt is empty"))
@@ -120,7 +133,11 @@ class OpenHandsRepository(
                 initialMessage = InitialMessageDto(
                     content = listOf(TextContentDto(text = prompt))
                 ),
-                selectedRepository = cleanRepo
+                selectedRepository = cleanRepo,
+                selectedBranch = branch?.trim()?.ifEmpty { null },
+                gitProvider = gitProvider?.trim()?.ifEmpty { null },
+                llmModel = llmModel?.trim()?.ifEmpty { null },
+                agentType = agentType.ifBlank { "default" }
             )
             call("create conversation") { api.createConversation(request) }.mapCatching { start ->
                 persistStartTask(start, prompt, cleanRepo)
@@ -166,6 +183,55 @@ class OpenHandsRepository(
             eventDao.deleteEventsForConversation(conversationId)
         }
     }
+
+    // ---- Git integration + profiles (restored from cloud-v1 client) ----------
+
+    /** Repositories visible to the configured upstream git provider. */
+    suspend fun searchRepositories(query: String = "", provider: String? = null): Result<List<RepositoryDto>> =
+        withContext(Dispatchers.IO) {
+            call("list repositories") {
+                api.searchRepositories(query = query.ifEmpty { null }, provider = provider)
+            }.map { page -> page?.items ?: emptyList() }
+        }
+
+    suspend fun searchBranches(repository: String, provider: String, query: String = ""): Result<List<BranchDto>> =
+        withContext(Dispatchers.IO) {
+            call("list branches") { api.searchBranches(repository, provider, query) }
+                .map { page -> page?.items ?: emptyList() }
+        }
+
+    /** Working-tree changes for a running conversation's sandbox. */
+    suspend fun gitChanges(conversationId: String): Result<GitDiffDto> =
+        withContext(Dispatchers.IO) {
+            call("git changes") { api.gitChanges(conversationId) }
+        }
+
+    suspend fun gitDiff(conversationId: String): Result<GitDiffDto> =
+        withContext(Dispatchers.IO) {
+            call("git diff") { api.gitDiff(conversationId) }
+        }
+
+    /** Saved LLM profiles switchable onto a running conversation. */
+    suspend fun listProfiles(): Result<List<AgentProfileDto>> =
+        withContext(Dispatchers.IO) {
+            call("list profiles") { api.listProfiles() }
+        }
+
+    /** Applies a saved profile to a running conversation (mid-session model switch). */
+    suspend fun switchProfile(conversationId: String, profileId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("switch profile") {
+                api.switchProfile(conversationId, SwitchProfileRequest(profileId = profileId))
+            }.map { }
+        }
+
+    /** For ACP-backed conversations: switch the model exposed by the ACP server. */
+    suspend fun switchAcpModel(conversationId: String, model: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("switch ACP model") {
+                api.switchAcpModel(conversationId, SwitchAcpModelRequest(model = model))
+            }.map { }
+        }
 
     // ---- Local helpers ---------------------------------------------------------
 

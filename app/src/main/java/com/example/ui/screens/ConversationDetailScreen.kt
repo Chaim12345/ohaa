@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,7 +52,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AgentEvent
+import com.example.data.model.GitChangeDto
+import com.example.data.model.GitDiffDto
 import com.example.data.model.OpenHandsConversation
+import com.example.data.settings.AgentKind
+import com.example.data.settings.AgentProfile
+import com.example.ui.components.AgentProfileBadge
+import com.example.ui.components.AgentProfileDialog
 import com.example.ui.components.EventItemView
 import com.example.ui.components.StatusChip
 import com.example.ui.theme.CanvasBorder
@@ -64,14 +71,23 @@ fun ConversationDetailScreen(
     events: List<AgentEvent>,
     isSending: Boolean,
     isDemoMode: Boolean,
+    activeProfile: AgentProfile,
+    gitDiff: GitDiffDto?,
+    isGitLoading: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSendMessage: (String) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onRefreshGit: () -> Unit,
+    onAgentKindChanged: (AgentKind) -> Unit,
+    onModelChanged: (String) -> Unit,
+    onAcpCommandChanged: (String) -> Unit,
+    onResetProfile: () -> Unit
 ) {
     val listState = rememberLazyListState()
     var composerText by remember { mutableStateOf("") }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     // Keep the newest event visible as the transcript grows, but never yank
@@ -129,8 +145,16 @@ fun ConversationDetailScreen(
                     }
                 }
             }
+            AgentProfileBadge(profile = activeProfile, onOpen = { showProfileDialog = true })
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+            }
+            IconButton(
+                onClick = onRefreshGit,
+                enabled = !isGitLoading,
+                modifier = Modifier.testTag("btn_git_changes")
+            ) {
+                Icon(Icons.Default.Sync, contentDescription = "Pull git changes")
             }
             IconButton(onClick = { showDeleteConfirmation = true }) {
                 Icon(
@@ -163,6 +187,11 @@ fun ConversationDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 24.dp)
                     )
+                }
+            }
+            gitDiff?.files?.takeIf { it.isNotEmpty() }?.let { files ->
+                item {
+                    GitChangesCard(files, gitDiff.diff)
                 }
             }
             items(events, key = { it.id }) { event ->
@@ -267,6 +296,26 @@ fun ConversationDetailScreen(
             }
         )
     }
+
+    if (showProfileDialog) {
+        AgentProfileDialog(
+            profile = activeProfile,
+            onDismiss = { showProfileDialog = false },
+            onAgentKindChanged = onAgentKindChanged,
+            onModelChanged = onModelChanged,
+            onAcpCommandChanged = onAcpCommandChanged,
+            title = "Agent & LLM · this conversation"
+        )
+        TextButton(
+            onClick = {
+                showProfileDialog = false
+                onResetProfile()
+            },
+            modifier = Modifier.testTag("btn_reset_profile")
+        ) {
+            Text("Reset to default")
+        }
+    }
 }
 
 @Composable
@@ -284,5 +333,88 @@ private fun DemoBanner() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(10.dp)
         )
+    }
+}
+
+/** Compact list of working-tree changes with an expandable unified diff. */
+@Composable
+private fun GitChangesCard(files: List<GitChangeDto>, diff: String?) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("git_changes_card")
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Sync,
+                    null,
+                    tint = CanvasPrimary,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Git changes · ${files.size} file(s)",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            files.forEach { change ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                ) {
+                    Text(
+                        change.file,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        change.status.uppercase(),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "+${change.insertions} −${change.deletions}",
+                        fontSize = 10.sp,
+                        color = CanvasPrimary
+                    )
+                }
+            }
+            diff?.takeIf { it.isNotBlank() }?.let { d ->
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Hide diff" else "View diff")
+                }
+                if (expanded) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            d,
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            maxLines = 12,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }

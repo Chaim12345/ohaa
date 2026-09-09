@@ -7,13 +7,20 @@ import com.example.data.api.ApiClient
 import com.example.data.api.ApiSettings
 import com.example.data.local.AppDatabase
 import com.example.data.model.AgentEvent
+import com.example.data.model.AgentProfileDto
+import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
 import com.example.data.model.ConversationUiStatus
+import com.example.data.model.GitDiffDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
+import com.example.data.model.RepositoryDto
 import com.example.data.model.StartTaskDto
 import com.example.data.repository.CloudError
 import com.example.data.repository.OpenHandsRepository
+import com.example.data.settings.AgentKind
+import com.example.data.settings.AgentProfile
+import com.example.data.settings.AgentProfileStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +70,17 @@ data class OpenHandsUiState(
     val baseUrlInput: String = ApiSettings.DEFAULT_BASE_URL,
     val healthMessage: String? = null,
     val healthOk: Boolean? = null,
-    val credits: Double? = null
+    val credits: Double? = null,
+    // Agent & LLM — what the user sees as "active" right now. Defaults to the
+    // plain OpenHands agent; ACP is only ever used when explicitly chosen.
+    val activeProfile: AgentProfile = AgentProfile(),
+    // Git integration — repos from the configured upstream provider
+    val repoSearchResults: List<RepositoryDto> = emptyList(),
+    val repoBranchResults: List<BranchDto> = emptyList(),
+    val selectedBranch: String = "",
+    val isSearchingRepos: Boolean = false,
+    val gitDiff: GitDiffDto? = null,
+    val isGitLoading: Boolean = false
 )
 
 enum class LaunchStage(val label: String) {
@@ -91,10 +108,14 @@ class OpenHandsViewModel(application: Application) :
         }
     )
 
+    /** Persists the default agent/LLM profile plus per-conversation overrides. */
+    private val profileStore: AgentProfileStore = AgentProfileStore(application)
+
     private val _uiState = MutableStateFlow(
         OpenHandsUiState(
             apiKeyInput = "",
-            isDemoMode = !repository.isConfigured()
+            isDemoMode = !repository.isConfigured(),
+            activeProfile = profileStore.defaultProfile()
         )
     )
     val uiState: StateFlow<OpenHandsUiState> = _uiState.asStateFlow()
@@ -144,7 +165,11 @@ class OpenHandsViewModel(application: Application) :
     }
 
     fun openDetail(conversationId: String) {
-        _uiState.value = _uiState.value.copy(detailConversationId = conversationId)
+        _uiState.value = _uiState.value.copy(
+            detailConversationId = conversationId,
+            // Surface this conversation's agent/LLM (override or the default).
+            activeProfile = profileStore.profileFor(conversationId)
+        )
         startDetailObservation(conversationId)
     }
 
@@ -152,7 +177,10 @@ class OpenHandsViewModel(application: Application) :
         detailPollingJob?.cancel()
         detailObservationJob?.cancel()
         _detailEvents.value = emptyList()
-        _uiState.value = _uiState.value.copy(detailConversationId = null)
+        _uiState.value = _uiState.value.copy(
+            detailConversationId = null,
+            activeProfile = profileStore.defaultProfile()
+        )
     }
 
     // ---- Dashboard / list -------------------------------------------------------
@@ -243,8 +271,21 @@ class OpenHandsViewModel(application: Application) :
                 launchStatusText = LaunchStage.SUBMITTING.label
             )
             val repo = _uiState.value.newTaskRepo.trim().ifEmpty { null }
+            val profile = _uiState.value.activeProfile
+            val llmModel = if (profile.kind == AgentKind.OPENHANDS) profile.model else null
+            val agentType = when (profile.kind) {
+                AgentKind.OPENHANDS -> "default"
+                AgentKind.ACP -> "acp"
+            }
 
-            repository.createConversation(prompt, repo)
+            repository.createConversation(
+                prompt,
+                repo,
+                branch = _uiState.value.selectedBranch.ifBlank { null },
+                gitProvider = gitProviderLabel(repo),
+                llmModel = llmModel,
+                agentType = agentType
+            )
                 .onSuccess { conversationId ->
                     _uiState.value = _uiState.value.copy(
                         newTaskPrompt = "",
@@ -342,6 +383,140 @@ class OpenHandsViewModel(application: Application) :
                 repository.refreshConversations(showFeedback = false)
             }
         }
+    }
+
+    // ---- Git integration (repos from upstream provider + sandbox changes) -----------
+
+    /** Pulls repositories visible to the configured upstream git provider. */
+    fun searchRepositories() {
+        if (_uiState.value.isSearchingRepos) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSearchingRepos = true)
+            repository.searchRepositories(_uiState.value.newTaskRepo)
+                .onSuccess { repos ->
+                    _uiState.value = _uiState.value.copy(
+                        repoSearchResults = repos,
+                        isSearchingRepos = false
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        isSearchingRepos = false,
+                        notification = "Repositories: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Picks a repository from the provider listing and loads its branches. */
+    fun selectRepository(repo: RepositoryDto) {
+        _uiState.value = _uiState.value.copy(
+            newTaskRepo = repo.displayName,
+            selectedBranch = repo.branch ?: "",
+            repoBranchResults = emptyList()
+        )
+        viewModelScope.launch {
+            repository.searchBranches(repo.displayName, repo.gitProvider ?: "github")
+                .onSuccess { branches ->
+                    _uiState.value = _uiState.value.copy(repoBranchResults = branches)
+                }
+                .onFailure { }
+        }
+    }
+
+    fun updateSelectedBranch(branch: String) {
+        _uiState.value = _uiState.value.copy(selectedBranch = branch)
+    }
+
+    /** Pulls the working-tree git diff/changes for the open conversation. */
+    fun refreshGitChanges() {
+        val id = _uiState.value.detailConversationId ?: return
+        if (_uiState.value.isGitLoading) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isGitLoading = true)
+            repository.gitChanges(id)
+                .onSuccess { diff -> _uiState.value = _uiState.value.copy(gitDiff = diff, isGitLoading = false) }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        isGitLoading = false,
+                        notification = "Git: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Best-effort upstream provider for a repo string (github by default). */
+    private fun gitProviderLabel(repo: String?): String? {
+        return repo?.let {
+            when {
+                it.startsWith("git@") -> it.substringAfter('@').substringBefore(':')
+                it.contains("gitlab") -> "gitlab"
+                it.contains("bitbucket") -> "bitbucket"
+                else -> "github"
+            }
+        }
+    }
+
+    // ---- Agent & LLM profile ------------------------------------------------------------
+
+    /**
+     * Updates the visible agent/LLM selection. Inside an open conversation the
+     * change is a **mid-session switch**: it is persisted as a per-conversation
+     * override and takes effect for subsequent messages. Outside a
+     * conversation (Settings / New Task) it updates the global default used
+     * for new conversations. ACP is only ever active when explicitly chosen.
+     */
+    private fun updateActiveProfile(transform: (AgentProfile) -> AgentProfile) {
+        val updated = transform(_uiState.value.activeProfile)
+        val conversationId = _uiState.value.detailConversationId
+        if (conversationId != null) {
+            profileStore.setProfileFor(conversationId, updated)
+            _uiState.value = _uiState.value.copy(
+                activeProfile = updated,
+                notification = "Now using ${updated.shortLabel()} for this conversation"
+            )
+        } else {
+            profileStore.saveDefaultProfile(updated)
+            _uiState.value = _uiState.value.copy(activeProfile = updated)
+        }
+    }
+
+    fun setAgentKind(kind: AgentKind) = updateActiveProfile { it.copy(kind = kind) }
+
+    fun setModel(model: String) {
+        if (model.isBlank()) return
+        val conversationId = _uiState.value.detailConversationId
+        updateActiveProfile { it.copy(model = model.trim()) }
+        // Mid-session switch: push the model onto the running conversation via
+        // a matching saved profile id (switch_profile), when the cloud has one.
+        if (conversationId != null && _uiState.value.activeProfile.kind == AgentKind.OPENHANDS) {
+            viewModelScope.launch {
+                repository.listProfiles().onSuccess { profiles ->
+                    profiles.firstOrNull { it.llmModel == model.trim() }?.id?.let { profileId ->
+                        repository.switchProfile(conversationId, profileId).onFailure { err ->
+                            _uiState.value = _uiState.value.copy(
+                                notification = "Profile saved locally; cloud switch failed: ${err.toUserMessage()}"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun setAcpCommand(command: String) {
+        if (command.isBlank()) return
+        updateActiveProfile { it.copy(acpCommand = command.trim()) }
+    }
+
+    /** Drops this conversation's override; it falls back to the default profile. */
+    fun resetConversationProfile() {
+        val id = _uiState.value.detailConversationId ?: return
+        profileStore.clearProfileFor(id)
+        _uiState.value = _uiState.value.copy(
+            activeProfile = profileStore.defaultProfile(),
+            notification = "Reverted to default profile"
+        )
     }
 
     // ---- Settings ---------------------------------------------------------------------
