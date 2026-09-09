@@ -34,6 +34,9 @@ jobs:
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        # The upload is a convenience, not the CI signal — don't fail the run when the
+        # account's artifact storage quota is exhausted ("recalculated every 6-12 hours").
+        continue-on-error: true
         with:
           name: openhands-canvas-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
