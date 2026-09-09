@@ -51,6 +51,10 @@ jobs:
             adb logcat -d -b crash > crash-logcat.txt || true
             echo "App process after launch: '${PID}'"
             if [ -z "$PID" ]; then
+              echo "---- CRASH LOGCAT (buffer: crash) ----"
+              cat crash-logcat.txt
+              echo "---- FATAL / AndroidRuntime lines from full logcat ----"
+              grep -E "FATAL EXCEPTION|AndroidRuntime|Process: com.aistudio" full-logcat.txt | head -80 || true
               {
                 echo "## APP CRASHED ON LAUNCH — crash buffer:"
                 echo ""
