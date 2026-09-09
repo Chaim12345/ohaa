@@ -303,7 +303,8 @@ fun EventItemView(event: AgentEvent, modifier: Modifier = Modifier) {
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(17.dp)
                 )
-            }            AnimatedVisibility(expanded) {
+            }
+            AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 8.dp)) {
                     Text(
                         event.content,

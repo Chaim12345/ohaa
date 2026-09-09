@@ -112,14 +112,14 @@ fun ConversationsScreen(
                 .padding(vertical = 10.dp)
                 .testTag("status_filters")
         ) {
-            listOf(
+            items(listOf(
                 ConversationUiStatus.RUNNING,
                 ConversationUiStatus.WORKING,
                 ConversationUiStatus.STARTING,
                 ConversationUiStatus.WAITING_INPUT,
                 ConversationUiStatus.FINISHED,
                 ConversationUiStatus.ERROR
-            ).forEach { status ->
+            )) { status ->
                 FilterChip(
                     selected = statusFilter == status,
                     onClick = {

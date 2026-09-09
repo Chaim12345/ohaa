@@ -100,7 +100,7 @@ class OpenHandsRepository(
         withContext(Dispatchers.IO) {
             call("search conversations") { api.searchConversations(query) }.map { page ->
                 val dtoList = page?.conversations ?: page?.items ?: page?.results ?: emptyList()
-                dtoList.map { it.toEntity(now()) }
+                dtoList.map { it.toEntity(now()).toDomain() }
             }
         }
 
