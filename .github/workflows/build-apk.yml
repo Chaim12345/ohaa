@@ -32,6 +32,24 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Upload APK to temp.sh
+        # Convenience mirror so the APK is grabbable without GitHub auth (also a
+        # fallback when the artifact upload below hits the storage quota).
+        # Note: this publishes the debug APK to a public third-party host.
+        continue-on-error: true
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ ! -f "$APK_PATH" ]; then
+            echo "APK file not found for temp.sh upload."
+            exit 1
+          fi
+          URL=$(curl -sS --retry 3 -F "file=@${APK_PATH}" https://temp.sh/upload | tr -d '\r\n')
+          if [ -z "$URL" ]; then
+            echo "temp.sh upload returned no URL."
+            exit 1
+          fi
+          echo "Download (temp.sh, expires after a few days): $URL"
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         # The upload is a convenience, not the CI signal — don't fail the run when the
