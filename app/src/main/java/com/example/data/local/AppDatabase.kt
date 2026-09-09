@@ -29,7 +29,14 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "openhands_cloud.db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                    // Missing migrations (upgrade) must never crash at cold start.
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    // Same for opening an older APK over a newer DB: without this,
+                    // Room throws "Can't downgrade database" and the app dies at
+                    // startup on every launch until the user clears app data.
+                    .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
+                    .build()
                 INSTANCE = instance
                 instance
             }
