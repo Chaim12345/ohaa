@@ -1,12 +1,20 @@
 package com.example
 
 import com.example.data.api.ApiClient
+import com.example.data.model.AgentProfileInfoDto
+import com.example.data.model.ApiKeyCreateResponseDto
+import com.example.data.model.AppConversationDto
+import com.example.data.model.ConversationInfoDto
 import com.example.data.model.CreditsDto
+import com.example.data.model.DeviceAuthorizationResponseDto
 import com.example.data.model.EventDto
 import com.example.data.model.LlmProfileListDto
+import com.example.data.model.MeResponseDto
 import com.example.data.model.MessagePayloads
 import com.example.data.model.MessageToolCallDto
+import com.example.data.model.OrgPageDto
 import com.example.data.model.PageDto
+import com.example.data.model.QuotaStatusResponseDto
 import com.example.data.model.RepositoryDto
 import com.example.data.model.SendMessageRequest
 import com.example.data.model.StartTaskDto
@@ -194,5 +202,167 @@ class DtoStringParsingTest {
         assertEquals("master", dto.branch)
         assertEquals(false, dto.isPublic)
         assertEquals(3, dto.stargazersCount)
+    }
+
+    @Test
+    fun `launched_agent_profile parses as object not string`() {
+        // Regression: the live wire shape is an object; String typing crashed with
+        // "Expected a string but was BEGIN_OBJECT at $.items[0].launched_agent_profile".
+        val json = """
+            {
+              "id": "660e8400-0001",
+              "title": "Fix README",
+              "launched_agent_profile": {
+                "agent_profile_id": "0199b7b0-6b2f-7d21-9b2c-3b4b5c6d7e8f",
+                "revision": 1
+              }
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(AppConversationDto::class.java).fromJson(json)!!
+        assertEquals("0199b7b0-6b2f-7d21-9b2c-3b4b5c6d7e8f", dto.launchedAgentProfile?.agentProfileId)
+        assertEquals(1, dto.launchedAgentProfile?.revision)
+    }
+
+    @Test
+    fun `quota status parses spec fields`() {
+        val json = """
+            {
+              "daily_limit": 50,
+              "used_today": 12,
+              "remaining": 38,
+              "reset_at": "2026-09-11T00:00:00Z",
+              "work_email": "dev@corp.example",
+              "work_email_verified": true,
+              "latest_request_status": "approved",
+              "latest_request_requested_limit": 100
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(QuotaStatusResponseDto::class.java).fromJson(json)!!
+        assertEquals(50, dto.dailyLimit)
+        assertEquals(12, dto.usedToday)
+        assertEquals(38, dto.remaining)
+        assertEquals("approved", dto.latestRequestStatus)
+        assertEquals(100, dto.latestRequestRequestedLimit)
+    }
+
+    @Test
+    fun `org page parses items and next page cursor`() {
+        val json = """
+            {
+              "items": [
+                {"id": "org-1", "name": "Acme", "is_personal": false},
+                {"id": "org-2", "name": "Personal", "is_personal": true}
+              ],
+              "next_page_id": "cursor-9",
+              "current_org_id": "org-1"
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(OrgPageDto::class.java).fromJson(json)!!
+        assertEquals(2, dto.items?.size)
+        assertEquals("Acme", dto.items?.first()?.name)
+        assertEquals("cursor-9", dto.nextPageId)
+        assertEquals("org-1", dto.currentOrgId)
+    }
+
+    @Test
+    fun `device authorization response parses required oauth fields`() {
+        val json = """
+            {
+              "device_code": "dc-123",
+              "user_code": "WDJB-MJHT",
+              "verification_uri": "https://app.all-hands.dev/oauth/device",
+              "verification_uri_complete": "https://app.all-hands.dev/oauth/device?user_code=WDJB-MJHT",
+              "expires_in": 1800,
+              "interval": 5
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(DeviceAuthorizationResponseDto::class.java).fromJson(json)!!
+        assertEquals("dc-123", dto.deviceCode)
+        assertEquals("WDJB-MJHT", dto.userCode)
+        assertEquals("https://app.all-hands.dev/oauth/device", dto.verificationUri)
+        assertEquals("https://app.all-hands.dev/oauth/device?user_code=WDJB-MJHT", dto.verificationUriComplete)
+        assertEquals(1800, dto.expiresIn)
+        assertEquals(5, dto.interval)
+    }
+
+    @Test
+    fun `api key create response parses key material`() {
+        val json = """
+            {
+              "id": 42,
+              "name": "ci-key",
+              "key": "oh_xxxxxxxxxxxx"
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(ApiKeyCreateResponseDto::class.java).fromJson(json)!!
+        assertEquals(42, dto.id)
+        assertEquals("ci-key", dto.name)
+        assertEquals("oh_xxxxxxxxxxxx", dto.key)
+    }
+
+    @Test
+    fun `agent profile info parses revision and mcp refs`() {
+        val json = """
+            {
+              "id": "0199b7b0-6b2f-7d21-9b2c-3b4b5c6d7e8f",
+              "name": "default",
+              "agent_kind": "openhands",
+              "revision": 3,
+              "llm_profile_ref": "anthropic-claude",
+              "mcp_server_refs": ["gh-mcp"]
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(AgentProfileInfoDto::class.java).fromJson(json)!!
+        assertEquals("default", dto.name)
+        assertEquals("openhands", dto.agentKind)
+        assertEquals(3, dto.revision)
+        assertEquals("anthropic-claude", dto.llmProfileRef)
+        assertEquals(listOf("gh-mcp"), dto.mcpServerRefs)
+    }
+
+    @Test
+    fun `me response parses role permissions and api keys`() {
+        val json = """
+            {
+              "org_id": "org-1",
+              "user_id": "u-1",
+              "email": "me@x.io",
+              "role": "ADMIN",
+              "permissions": ["conversation:read", "settings:write"],
+              "llm_api_key": "managed",
+              "llm_api_key_for_byor": null,
+              "agent_settings_diff": {},
+              "conversation_settings_diff": {}
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(MeResponseDto::class.java).fromJson(json)!!
+        assertEquals("ADMIN", dto.role)
+        assertEquals(listOf("conversation:read", "settings:write"), dto.permissions)
+        assertEquals("managed", dto.llmApiKey)
+        assertNull(dto.llmApiKeyForByor)
+    }
+
+    @Test
+    fun `webhook conversation payload parses flat fields`() {
+        val json = """
+            {
+              "id": "conv-webhook",
+              "max_iterations": 100,
+              "execution_status": "RUNNING",
+              "title": "CI run",
+              "created_at": "2026-09-10T00:00:00Z",
+              "updated_at": "2026-09-10T00:05:00Z",
+              "sub_conversation_ids": [],
+              "supports_runtime_model_switch": false,
+              "launched_agent_profile": {"agent_profile_id": "p-1", "revision": 2},
+              "client_tools": []
+            }
+        """.trimIndent()
+        val dto = moshi.adapter(ConversationInfoDto::class.java).fromJson(json)!!
+        assertEquals("conv-webhook", dto.id)
+        assertEquals(100, dto.maxIterations)
+        assertEquals("RUNNING", dto.executionStatus)
+        assertEquals("CI run", dto.title)
+        assertEquals(2, dto.launchedAgentProfile?.revision)
     }
 }

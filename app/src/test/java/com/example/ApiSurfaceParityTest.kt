@@ -16,9 +16,9 @@ import java.lang.reflect.ParameterizedType
 
 /**
  * Guards the typed API surface against the live OpenHands Cloud OpenAPI
- * contract. Every mobile-relevant path from
- * https://app.all-hands.dev/openapi.json must be covered by exactly one
- * Retrofit method with the right HTTP verb.
+ * contract (v1.59.1, https://app.all-hands.dev/openapi.json — 211 operations).
+ * Every declared endpoint must be covered by exactly one Retrofit method with
+ * the right HTTP verb.
  */
 class ApiSurfaceParityTest {
 
@@ -41,9 +41,9 @@ class ApiSurfaceParityTest {
     }
 
     @Test
-    fun `all cloud-v1 mobile surface endpoints are present`() {
+    fun `all 211 spec operations are present with correct verbs`() {
         val have = surface()
-        // The complete mobile-relevant surface of the cloud API (66 operations).
+        // Complete surface of the live OpenAPI spec, every operation.
         val expected = listOf(
             "GET api/service/health" to "health",
             "POST api/v1/app-conversations" to "startConversation",
@@ -109,9 +109,156 @@ class ApiSurfaceParityTest {
             "GET api/v1/users/git-info" to "gitUser",
             "GET api/keys/current" to "currentApiKey",
             "GET api/billing/credits" to "credits",
-            "GET api/v1/config/models/search" to "searchModels"
+            "GET api/v1/config/models/search" to "searchModels",
+            "GET alive" to "aliveAliveGet",
+            "POST api/accept_tos" to "acceptTos",
+            "GET api/admin/feature-flags" to "listFlags",
+            "POST api/admin/feature-flags" to "createFlag",
+            "GET api/admin/feature-flags/{key}" to "getFlag",
+            "PATCH api/admin/feature-flags/{key}" to "updateFlag",
+            "DELETE api/admin/feature-flags/{key}" to "deleteFlag",
+            "POST api/admin/feature-flags/{key}/evaluate" to "evaluateFlag",
+            "POST api/admin/feature-flags/{key}/rules" to "createRule",
+            "DELETE api/admin/feature-flags/{key}/rules/{rule_id}" to "deleteRule",
+            "PUT api/admin/quota/orgs/{org_id}/quota" to "setOrgQuota",
+            "GET api/admin/quota/requests" to "listPendingQuotaRequests",
+            "POST api/admin/quota/requests/{request_id}/approve" to "approveQuotaRequest",
+            "POST api/admin/quota/requests/{request_id}/reject" to "rejectQuotaRequest",
+            "GET api/admin/super-admins" to "listSuperAdmins",
+            "POST api/admin/super-admins" to "grantSuperAdmin",
+            "DELETE api/admin/super-admins/{user_id}" to "revokeSuperAdmin",
+            "DELETE api/admin/users/{user_id}" to "deleteUser",
+            "POST api/admin/users/{user_id}/disable" to "disableUser",
+            "POST api/admin/users/{user_id}/enable" to "enableUser",
+            "GET api/admin/verified-models" to "searchVerifiedModels",
+            "POST api/admin/verified-models" to "createVerifiedModel",
+            "PUT api/admin/verified-models/{provider}/{model_name}" to "updateVerifiedModel",
+            "DELETE api/admin/verified-models/{provider}/{model_name}" to "deleteVerifiedModel",
+            "GET api/agent-profiles" to "listAgentProfiles",
+            "GET api/agent-profiles/{name}" to "getAgentProfile",
+            "POST api/agent-profiles/{name}" to "saveAgentProfile",
+            "DELETE api/agent-profiles/{name}" to "deleteAgentProfile",
+            "POST api/agent-profiles/{name}/materialize" to "materializeAgentProfile",
+            "POST api/agent-profiles/{name}/rename" to "renameAgentProfile",
+            "POST api/agent-profiles/{profile_id}/activate" to "activateAgentProfile",
+            "POST api/analytics/events" to "trackFrontendEvent",
+            "POST api/authenticate" to "authenticate",
+            "GET api/billing/cancel" to "cancelCallback",
+            "POST api/billing/create-checkout-session" to "createCheckoutSession",
+            "POST api/billing/create-customer-setup-session" to "createCustomerSetupSession",
+            "POST api/billing/has-payment-method" to "hasPaymentMethod",
+            "GET api/billing/subscription-access" to "getSubscriptionAccess",
+            "GET api/billing/success" to "successCallback",
+            "POST api/complete_onboarding" to "completeOnboarding",
+            "POST api/email" to "updateEmail",
+            "PUT api/email/resend" to "resendEmailVerification",
+            "GET api/email/verified" to "verifiedEmail",
+            "GET api/keys" to "list",
+            "POST api/keys" to "create",
+            "GET api/keys/llm/byor" to "getLlm",
+            "GET api/keys/llm/byor/permitted" to "checkByorPermitted",
+            "POST api/keys/llm/byor/refresh" to "refreshLlm",
+            "POST api/keys/llm/managed/refresh" to "refreshManagedLlm",
+            "DELETE api/keys/{key_id}" to "delete",
+            "POST api/logout" to "logout",
+            "GET api/onboarding_status" to "onboardingStatus",
+            "GET api/organizations" to "listUserOrgs",
+            "POST api/organizations" to "createOrg",
+            "GET api/organizations/app" to "getOrgAppSettings",
+            "POST api/organizations/app" to "updateOrgAppSettings",
+            "GET api/organizations/llm" to "getLegacyOrgDefaultsSettings",
+            "POST api/organizations/llm" to "updateLegacyOrgDefaultsSettings",
+            "GET api/organizations/members/invite/accept" to "acceptInvitationRedirect",
+            "POST api/organizations/members/invite/accept" to "acceptInvitation",
+            "GET api/organizations/{org_id}" to "getOrg",
+            "DELETE api/organizations/{org_id}" to "deleteOrg",
+            "PATCH api/organizations/{org_id}" to "updateOrg",
+            "GET api/organizations/{org_id}/budgets" to "getOrgBudgetSettings",
+            "PATCH api/organizations/{org_id}/budgets" to "updateOrgBudgetSettings",
+            "PUT api/organizations/{org_id}/budgets/overrides/{user_id}" to "upsertOrgBudgetOverride",
+            "DELETE api/organizations/{org_id}/budgets/overrides/{user_id}" to "deleteOrgBudgetOverride",
+            "GET api/organizations/{org_id}/conversations" to "listOrgConversations",
+            "GET api/organizations/{org_id}/conversations/export" to "exportOrgConversationsCsv",
+            "GET api/organizations/{org_id}/conversations/stats" to "getOrgConversationStats",
+            "GET api/organizations/{org_id}/conversations/usage-stats" to "getOrgConversationUsageStats",
+            "GET api/organizations/{org_id}/conversations/user-usage" to "getOrgConversationUserUsageStats",
+            "GET api/organizations/{org_id}/conversations/{conversation_id}" to "getOrgConversation",
+            "POST api/organizations/{org_id}/conversations/{conversation_id}/stop" to "stopOrgConversation",
+            "GET api/organizations/{org_id}/git-claims" to "getGitClaims",
+            "POST api/organizations/{org_id}/git-claims" to "claimGitOrganization",
+            "DELETE api/organizations/{org_id}/git-claims/{claim_id}" to "disconnectGitOrganization",
+            "GET api/organizations/{org_id}/me" to "getMe",
+            "GET api/organizations/{org_id}/members" to "getOrgMembers",
+            "GET api/organizations/{org_id}/members/count" to "getOrgMembersCount",
+            "GET api/organizations/{org_id}/members/financial" to "getOrgMembersFinancial",
+            "POST api/organizations/{org_id}/members/invite" to "createInvitation",
+            "GET api/organizations/{org_id}/members/invite" to "listPendingInvitations",
+            "DELETE api/organizations/{org_id}/members/invite/{invitation_id}" to "revokeInvitation",
+            "GET api/organizations/{org_id}/members/{user_id}" to "getOrgMember",
+            "DELETE api/organizations/{org_id}/members/{user_id}" to "removeOrgMember",
+            "PATCH api/organizations/{org_id}/members/{user_id}" to "updateOrgMember",
+            "GET api/organizations/{org_id}/profiles" to "orgListProfiles",
+            "GET api/organizations/{org_id}/profiles/{name}" to "orgGetProfile",
+            "POST api/organizations/{org_id}/profiles/{name}" to "orgSaveProfile",
+            "DELETE api/organizations/{org_id}/profiles/{name}" to "orgDeleteProfile",
+            "POST api/organizations/{org_id}/profiles/{name}/activate" to "orgActivateProfile",
+            "POST api/organizations/{org_id}/profiles/{name}/rename" to "orgRenameProfile",
+            "GET api/organizations/{org_id}/provider-connections" to "listProviderConnections",
+            "POST api/organizations/{org_id}/provider-connections" to "createProviderConnection",
+            "PATCH api/organizations/{org_id}/provider-connections/{connection_id}" to "updateProviderConnection",
+            "DELETE api/organizations/{org_id}/provider-connections/{connection_id}" to "deleteProviderConnection",
+            "GET api/organizations/{org_id}/settings" to "getOrgDefaultsSettings",
+            "PATCH api/organizations/{org_id}/settings" to "updateOrgDefaultsSettings",
+            "POST api/organizations/{org_id}/switch" to "switchOrg",
+            "POST api/quota/increase-request" to "createQuotaIncreaseRequest",
+            "GET api/quota/status" to "getQuotaStatus",
+            "GET api/quota/verify" to "verifyQuotaIncrease",
+            "GET api/refresh-tokens" to "refreshTokens",
+            "POST api/service/users/{user_id}/orgs/{org_id}/api-keys" to "getOrCreate",
+            "DELETE api/service/users/{user_id}/orgs/{org_id}/api-keys/{key_name}" to "deleteUser2",
+            "GET api/shared-conversations" to "batchGetSharedConversations",
+            "GET api/shared-events" to "batchGetSharedEvents",
+            "GET api/shared-events/count" to "countSharedEvents",
+            "GET api/shared-events/search" to "searchSharedEvents",
+            "GET api/shared-events/{conversation_id}/{event_id}" to "getSharedEvent",
+            "GET api/users/app" to "getUserAppSettings",
+            "POST api/users/app" to "updateUserAppSettings",
+            "GET api/v1/sandboxes/{sandbox_id}/settings/secrets/{secret_name}" to "getSecretValue",
+            "POST api/v1/webhooks/conversations" to "onConversationUpdate",
+            "POST api/v1/webhooks/events/{conversation_id}" to "onEvent",
+            "GET api/v1/webhooks/secrets" to "getSecret",
+            "GET health" to "healthHealthGet",
+            "POST integration/bitbucket/events" to "bitbucketEvents",
+            "POST integration/github/events" to "githubEvents",
+            "POST integration/gitlab/events" to "gitlabEvents",
+            "POST integration/gitlab/reinstall-webhook" to "reinstallGitlabWebhook",
+            "GET integration/gitlab/resources" to "getGitlabResources",
+            "GET integration/jira/callback" to "jiraCallback",
+            "POST integration/jira/events" to "jiraEvents",
+            "POST integration/jira/workspaces" to "createJiraWorkspace",
+            "GET integration/jira/workspaces/link" to "getCurrentWorkspaceLink",
+            "POST integration/jira/workspaces/link" to "createWorkspaceLink",
+            "GET integration/jira/workspaces/status" to "getJiraInstanceStatus",
+            "POST integration/jira/workspaces/unlink" to "unlinkWorkspace",
+            "GET integration/jira/workspaces/validate/{workspace_name}" to "validateWorkspace",
+            "POST oauth/device/authorize" to "deviceAuthorization",
+            "POST oauth/device/token" to "deviceToken",
+            "POST oauth/device/verify-authenticated" to "deviceVerificationAuthenticated",
+            "GET oauth/github/callback" to "githubDummyCallback",
+            "GET oauth/keycloak/callback" to "keycloakCallback",
+            "GET oauth/keycloak/offline/callback" to "keycloakOfflineCallback",
+            "GET ready" to "isReadyReadyGet",
+            "GET saas" to "isSaasSaasGet",
+            "GET server_info" to "getServerInfoServerInfoGet",
+            "GET slack/install" to "install",
+            "GET slack/install-callback" to "installCallback",
+            "GET slack/keycloak-callback" to "keycloakCallback2",
+            "POST slack/on-event" to "onEvent2",
+            "POST slack/on-form-interaction" to "onFormInteraction",
+            "POST slack/on-options-load" to "onOptionsLoad",
         )
-        assertEquals(expected.size, have.size)
+        assertEquals("surface size mismatch", 211, expected.size)
+        assertEquals("service declares extra or missing endpoints", expected.size, have.size)
         expected.forEach { (verbPath, method) ->
             assertEquals("surface mismatch for $method", verbPath, have[method])
         }
@@ -154,5 +301,12 @@ class ApiSurfaceParityTest {
         // The bound is Response<ResponseBody> — unwrap the Response envelope.
         val unwrapped = responseType.actualTypeArguments[0]
         assertEquals(ResponseBody::class.java, unwrapped)
+    }
+
+    @Test
+    fun `oauth device endpoints are form encoded`() {
+        val method = OpenHandsApiService::class.java.declaredMethods
+            .first { it.name == "deviceToken" }
+        assertTrue(method.getAnnotation(retrofit2.http.FormUrlEncoded::class.java) != null)
     }
 }
