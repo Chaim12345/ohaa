@@ -488,12 +488,12 @@ class OpenHandsViewModel(application: Application) :
         val conversationId = _uiState.value.detailConversationId
         updateActiveProfile { it.copy(model = model.trim()) }
         // Mid-session switch: push the model onto the running conversation via
-        // a matching saved profile id (switch_profile), when the cloud has one.
+        // a matching saved cloud profile (switch_profile), when one exists.
         if (conversationId != null && _uiState.value.activeProfile.kind == AgentKind.OPENHANDS) {
             viewModelScope.launch {
                 repository.listProfiles().onSuccess { profiles ->
-                    profiles.firstOrNull { it.llmModel == model.trim() }?.id?.let { profileId ->
-                        repository.switchProfile(conversationId, profileId).onFailure { err ->
+                    profiles.firstOrNull { it.model == model.trim() }?.name?.let { profileName ->
+                        repository.switchProfile(conversationId, profileName).onFailure { err ->
                             _uiState.value = _uiState.value.copy(
                                 notification = "Profile saved locally; cloud switch failed: ${err.toUserMessage()}"
                             )

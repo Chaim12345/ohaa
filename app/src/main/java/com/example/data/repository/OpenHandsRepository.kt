@@ -7,22 +7,33 @@ import com.example.data.local.AgentEventEntity
 import com.example.data.local.ConversationEntity
 import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AgentEvent
-import com.example.data.model.AgentProfileDto
+import com.example.data.model.AppConversationDto
 import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
-import com.example.data.model.ConversationDto
+import com.example.data.model.CreateSecretRequest
 import com.example.data.model.CreateConversationRequestDto
 import com.example.data.model.EventDto
+import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
-import com.example.data.model.InitialMessageDto
+import com.example.data.model.GitUserDto
+import com.example.data.model.LlmProfileDto
+import com.example.data.model.LlmProfileListDto
+import com.example.data.model.MessagePayloads
+import com.example.data.model.MessageResponseDto
 import com.example.data.model.OpenHandsConversation
+import com.example.data.model.PageDto
+import com.example.data.model.PendingMessageResponseDto
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
-import com.example.data.model.SendMessageRequestDto
+import com.example.data.model.SandboxDto
+import com.example.data.model.SandboxSpecDto
+import com.example.data.model.SendMessageRequest
+import com.example.data.model.SkillDto
 import com.example.data.model.StartTaskDto
-import com.example.data.model.SwitchAcpModelRequest
+import com.example.data.model.SuggestedTaskDto
 import com.example.data.model.SwitchProfileRequest
-import com.example.data.model.TextContentDto
+import com.example.data.model.UserInfoDto
+import com.example.data.model.WebClientConfigDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -82,33 +93,83 @@ class OpenHandsRepository(
     // ---- Health / credits -----------------------------------------------------
 
     suspend fun checkHealth(): Result<String> = withContext(Dispatchers.IO) {
-        call("health") { api.checkHealth() }.map { body ->
-            "Connected — service status: ${body?.status ?: "ok"}"
+        call("health") { api.health() }.map { body ->
+            "Connected — service status: ${body.string().take(200)}"
         }
     }
 
     suspend fun getCredits(): Result<CloudCredits> = withContext(Dispatchers.IO) {
-        call("credits") { api.getCredits() }.map { body -> CloudCredits(body?.credits) }
+        call("credits") { api.credits() }.map { body ->
+            CloudCredits(body?.credits?.toDoubleOrNull())
+        }
     }
 
     // ---- Conversations ---------------------------------------------------------
 
+    /**
+     * Refreshes the conversation list. The cloud has no "list all" batch route
+     * (batch GET requires ids), so /search with default filters is the surface.
+     */
     suspend fun refreshConversations(@Suppress("UNUSED_PARAMETER") showFeedback: Boolean = true): Result<List<OpenHandsConversation>> =
         withContext(Dispatchers.IO) {
-            call("list conversations") { api.listConversations() }.map { dtoList ->
-                val entities = dtoList.map { it.toEntity(now()) }
+            call("search conversations") { api.searchConversations() }.map { page ->
+                val entities = page.items.map { it.toEntity(now()) }
                 if (entities.isNotEmpty()) conversationDao.insertConversations(entities)
                 entities.map { it.toDomain() }
             }
         }
 
+    /** Title-filtered remote search backed by the `title__contains` parameter. */
     suspend fun searchConversationsRemote(query: String): Result<List<OpenHandsConversation>> =
         withContext(Dispatchers.IO) {
-            call("search conversations") { api.searchConversations(query) }.map { page ->
-                val dtoList = page?.conversations ?: page?.items ?: page?.results ?: emptyList()
-                val entities = dtoList.map { it.toEntity(now()) }
+            if (query.isBlank()) return@withContext refreshConversations()
+            call("search conversations") {
+                api.searchConversations(titleContains = query.trim())
+            }.map { page ->
+                val entities = page.items.map { it.toEntity(now()) }
                 if (entities.isNotEmpty()) conversationDao.insertConversations(entities)
                 entities.map { it.toDomain() }
+            }
+        }
+
+    /** Raw paged search for callers that want pagination tokens. */
+    suspend fun searchConversationsPage(
+        titleContains: String? = null,
+        pageId: String? = null,
+        limit: Int = 50
+    ): Result<PageDto<AppConversationDto>> = withContext(Dispatchers.IO) {
+        call("search conversations") {
+            api.searchConversations(titleContains = titleContains, pageId = pageId, limit = limit)
+        }
+    }
+
+    suspend fun countConversations(): Result<Int> = withContext(Dispatchers.IO) {
+        call("count conversations") { api.countConversations() }
+    }
+
+    /** Fetches specific conversations by id (batch GET). */
+    suspend fun getConversations(ids: List<String>): Result<List<AppConversationDto>> =
+        withContext(Dispatchers.IO) {
+            if (ids.isEmpty()) return@withContext Result.success(emptyList())
+            call("get conversations") { api.getConversations(ids) }.map { list ->
+                list.filterNotNull().also { dtos ->
+                    if (dtos.isNotEmpty()) {
+                        conversationDao.insertConversations(dtos.map { it.toEntity(now()) })
+                    }
+                }
+            }
+        }
+
+    /** Renames a conversation (PATCH metadata). */
+    suspend fun renameConversation(conversationId: String, title: String): Result<AppConversationDto> =
+        withContext(Dispatchers.IO) {
+            call("rename conversation") {
+                api.updateConversation(
+                    conversationId,
+                    com.example.data.model.UpdateConversationRequest(title = title)
+                )
+            }.onSuccess { dto ->
+                conversationDao.insertConversation(dto.toEntity(now()))
             }
         }
 
@@ -122,7 +183,9 @@ class OpenHandsRepository(
         branch: String? = null,
         gitProvider: String? = null,
         llmModel: String? = null,
-        agentType: String = "default"
+        agentType: String = "default",
+        title: String? = null,
+        agentProfileId: String? = null
     ): Result<String> =
         withContext(Dispatchers.IO) {
             if (prompt.isBlank()) {
@@ -130,29 +193,41 @@ class OpenHandsRepository(
             }
             val cleanRepo = repository?.trim()?.ifEmpty { null }
             val request = CreateConversationRequestDto(
-                initialMessage = InitialMessageDto(
-                    content = listOf(TextContentDto(text = prompt))
-                ),
+                initialMessage = SendMessageRequest.text(prompt),
                 selectedRepository = cleanRepo,
                 selectedBranch = branch?.trim()?.ifEmpty { null },
                 gitProvider = gitProvider?.trim()?.ifEmpty { null },
                 llmModel = llmModel?.trim()?.ifEmpty { null },
-                agentType = agentType.ifBlank { "default" }
+                agentType = agentType.ifBlank { "default" },
+                title = title?.trim()?.ifEmpty { null },
+                agentProfileId = agentProfileId?.trim()?.ifEmpty { null }
             )
-            call("create conversation") { api.createConversation(request) }.mapCatching { start ->
+            call("create conversation") { api.startConversation(request) }.mapCatching { start ->
                 persistStartTask(start, prompt, cleanRepo)
             }
         }
 
-    /** Polls the start task; returns the conversation id once the server reports READY. */
+    /** Polls the start task; returns the task once the server reports it. */
     suspend fun pollStartTask(startTaskId: String): Result<StartTaskDto> =
         withContext(Dispatchers.IO) {
-            call("start task") { api.getStartTasks(startTaskId) }.mapCatching { list ->
-                list.firstOrNull { it.id == startTaskId || list.size == 1 }
+            call("start task") { api.getStartTasks(listOf(startTaskId)) }.mapCatching { list ->
+                list.filterNotNull()
+                    .firstOrNull { it.id == startTaskId || list.size == 1 }
                     ?: throw IllegalStateException("Start task $startTaskId not found")
             }
         }
 
+    /** Start-task history, newest first (e.g. to re-attach to a pending launch). */
+    suspend fun searchStartTasks(limit: Int = 20): Result<PageDto<StartTaskDto>> =
+        withContext(Dispatchers.IO) {
+            call("search start tasks") { api.searchStartTasks(limit = limit) }
+        }
+
+    /**
+     * Sends a follow-up message. If the conversation is still starting (not
+     * READY), queues it as a pending message instead so it is delivered once
+     * the sandbox comes up.
+     */
     suspend fun sendMessage(conversationId: String, text: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             if (text.isBlank()) return@withContext Result.success(Unit)
@@ -163,18 +238,49 @@ class OpenHandsRepository(
                 content = text
             )
             call("send message") {
-                api.sendMessage(conversationId, SendMessageRequestDto(content = listOf(TextContentDto(text = text))))
+                api.sendMessage(conversationId, SendMessageRequest.text(text))
             }.map { }
+        }
+
+    /** Explicitly queues a message for a not-yet-READY conversation. */
+    suspend fun queuePendingMessage(conversationId: String, text: String): Result<PendingMessageResponseDto> =
+        withContext(Dispatchers.IO) {
+            if (text.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Message is empty"))
+            }
+            insertLocalEvent(
+                conversationId = conversationId,
+                source = "user",
+                actionType = "queued message",
+                content = text
+            )
+            call("queue pending message") {
+                api.queuePendingMessage(conversationId, SendMessageRequest.text(text))
+            }
         }
 
     suspend fun refreshEvents(conversationId: String): Result<List<AgentEvent>> =
         withContext(Dispatchers.IO) {
             call("events") { api.searchEvents(conversationId) }.map { page ->
-                val dtos = page?.events ?: page?.items ?: emptyList()
-                val entities = dtos.map { it.toEntity(conversationId) }
+                val entities = page.items.map { it.toEntity(conversationId) }
                 if (entities.isNotEmpty()) eventDao.insertEvents(entities)
                 entities.map { it.toDomain() }
             }
+        }
+
+    /** Event history page with kind/timestamp filters and pagination. */
+    suspend fun searchEvents(
+        conversationId: String,
+        kind: String? = null,
+        pageId: String? = null,
+        limit: Int = 100
+    ): Result<PageDto<EventDto>> = withContext(Dispatchers.IO) {
+        call("events") { api.searchEvents(conversationId, kind = kind, pageId = pageId, limit = limit) }
+    }
+
+    suspend fun countEvents(conversationId: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            call("count events") { api.countEvents(conversationId) }
         }
 
     suspend fun deleteConversation(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -184,44 +290,99 @@ class OpenHandsRepository(
         }
     }
 
+    // ---- Conversation files / export -------------------------------------------
+
+    /** Lists files under a path inside the sandbox workspace. */
+    suspend fun listFiles(conversationId: String, path: String? = null): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            call("list files") { api.listFiles(conversationId, path) }
+        }
+
+    /** Reads a workspace file's raw content. */
+    suspend fun readFile(conversationId: String, filePath: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            call("read file") { api.readFile(conversationId, filePath) }.map { it.string() }
+        }
+
+    /** Downloads the conversation trajectory (JSON export). */
+    suspend fun downloadTrajectory(conversationId: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            call("download trajectory") { api.downloadTrajectory(conversationId) }.map { it.string() }
+        }
+
+    /** Skills active in the conversation's sandbox (repo + global). */
+    suspend fun conversationSkills(conversationId: String): Result<List<SkillDto>> =
+        withContext(Dispatchers.IO) {
+            call("conversation skills") { api.conversationSkills(conversationId) }
+                .map { it.skills }
+        }
+
     // ---- Git integration + profiles (restored from cloud-v1 client) ----------
 
     /** Repositories visible to the configured upstream git provider. */
-    suspend fun searchRepositories(query: String = "", provider: String? = null): Result<List<RepositoryDto>> =
+    suspend fun searchRepositories(
+        query: String = "",
+        provider: String = DEFAULT_GIT_PROVIDER
+    ): Result<List<RepositoryDto>> =
         withContext(Dispatchers.IO) {
             call("list repositories") {
-                api.searchRepositories(query = query.ifEmpty { null }, provider = provider)
-            }.map { page -> page?.items ?: emptyList() }
+                api.searchRepositories(provider = provider, query = query.ifEmpty { null })
+            }.map { page -> page.items }
         }
 
-    suspend fun searchBranches(repository: String, provider: String, query: String = ""): Result<List<BranchDto>> =
+    suspend fun searchBranches(
+        repository: String,
+        provider: String = DEFAULT_GIT_PROVIDER,
+        query: String = ""
+    ): Result<List<BranchDto>> =
         withContext(Dispatchers.IO) {
-            call("list branches") { api.searchBranches(repository, provider, query) }
-                .map { page -> page?.items ?: emptyList() }
+            call("list branches") { api.searchBranches(provider, repository, query) }
+                .map { page -> page.items }
+        }
+
+    /** Suggested tasks (failing checks, open issues, …) across connected repos. */
+    suspend fun suggestedTasks(limit: Int = 30): Result<List<SuggestedTaskDto>> =
+        withContext(Dispatchers.IO) {
+            call("suggested tasks") { api.searchSuggestedTasks(limit = limit) }.map { it.items }
         }
 
     /** Working-tree changes for a running conversation's sandbox. */
-    suspend fun gitChanges(conversationId: String): Result<GitDiffDto> =
+    suspend fun gitChanges(
+        conversationId: String,
+        repoPath: String = WORKSPACE_DIR
+    ): Result<GitDiffDto> =
         withContext(Dispatchers.IO) {
-            call("git changes") { api.gitChanges(conversationId) }
+            call("git changes") { api.gitChanges(conversationId, repoPath) }
+                .map { changes -> GitDiffDto(files = changes) }
         }
 
-    suspend fun gitDiff(conversationId: String): Result<GitDiffDto> =
+    /** Unified diff for one file in the conversation's sandbox. */
+    suspend fun gitDiff(
+        conversationId: String,
+        filePath: String,
+        ref: String? = null
+    ): Result<GitDiffDto> =
         withContext(Dispatchers.IO) {
-            call("git diff") { api.gitDiff(conversationId) }
+            call("git diff") { api.gitDiff(conversationId, filePath, ref) }
         }
 
     /** Saved LLM profiles switchable onto a running conversation. */
-    suspend fun listProfiles(): Result<List<AgentProfileDto>> =
+    suspend fun listProfiles(): Result<List<LlmProfileDto>> =
+        withContext(Dispatchers.IO) {
+            call("list profiles") { api.listProfiles() }.map { it.profiles }
+        }
+
+    /** Profile list with the active profile name, for profile-management UIs. */
+    suspend fun profilesWithActive(): Result<LlmProfileListDto> =
         withContext(Dispatchers.IO) {
             call("list profiles") { api.listProfiles() }
         }
 
     /** Applies a saved profile to a running conversation (mid-session model switch). */
-    suspend fun switchProfile(conversationId: String, profileId: String): Result<Unit> =
+    suspend fun switchProfile(conversationId: String, profileName: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             call("switch profile") {
-                api.switchProfile(conversationId, SwitchProfileRequest(profileId = profileId))
+                api.switchProfile(conversationId, SwitchProfileRequest(profileName))
             }.map { }
         }
 
@@ -229,8 +390,117 @@ class OpenHandsRepository(
     suspend fun switchAcpModel(conversationId: String, model: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             call("switch ACP model") {
-                api.switchAcpModel(conversationId, SwitchAcpModelRequest(model = model))
+                api.switchAcpModel(conversationId, com.example.data.model.SwitchAcpModelRequest(model))
             }.map { }
+        }
+
+    // ---- Sandboxes ---------------------------------------------------------------
+
+    suspend fun searchSandboxes(limit: Int = 50): Result<List<SandboxDto>> =
+        withContext(Dispatchers.IO) {
+            call("search sandboxes") { api.searchSandboxes(limit = limit) }.map { it.items }
+        }
+
+    suspend fun getSandboxes(ids: List<String>): Result<List<SandboxDto>> =
+        withContext(Dispatchers.IO) {
+            if (ids.isEmpty()) return@withContext Result.success(emptyList())
+            call("get sandboxes") { api.getSandboxes(ids) }.map { list -> list.filterNotNull() }
+        }
+
+    suspend fun createSandbox(specId: String? = null): Result<SandboxDto> =
+        withContext(Dispatchers.IO) {
+            call("create sandbox") { api.createSandbox(specId) }
+        }
+
+    suspend fun pauseSandbox(sandboxId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("pause sandbox") { api.pauseSandbox(sandboxId) }.map { }
+        }
+
+    suspend fun resumeSandbox(sandboxId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("resume sandbox") { api.resumeSandbox(sandboxId) }.map { }
+        }
+
+    suspend fun deleteSandbox(sandboxId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("delete sandbox") { api.deleteSandbox(sandboxId, sandboxId) }.map { }
+        }
+
+    suspend fun searchSandboxSpecs(limit: Int = 50): Result<List<SandboxSpecDto>> =
+        withContext(Dispatchers.IO) {
+            call("search sandbox specs") { api.searchSandboxSpecs(limit = limit) }.map { it.items }
+        }
+
+    // ---- Secrets --------------------------------------------------------------------
+
+    suspend fun searchSecrets(nameContains: String? = null): Result<List<com.example.data.model.SecretDto>> =
+        withContext(Dispatchers.IO) {
+            call("search secrets") { api.searchSecrets(nameContains) }.map { it.items }
+        }
+
+    suspend fun createSecret(name: String, value: String): Result<MessageResponseDto> =
+        withContext(Dispatchers.IO) {
+            call("create secret") { api.createSecret(CreateSecretRequest(name, value)) }
+        }
+
+    /** Renames a secret; values are write-only and cannot be updated. */
+    suspend fun renameSecret(secretId: String, newName: String): Result<MessageResponseDto> =
+        withContext(Dispatchers.IO) {
+            call("rename secret") {
+                api.updateSecret(secretId, com.example.data.model.SecretDto(newName))
+            }
+        }
+
+    suspend fun deleteSecret(secretId: String): Result<MessageResponseDto> =
+        withContext(Dispatchers.IO) {
+            call("delete secret") { api.deleteSecret(secretId) }
+        }
+
+    // ---- Account / config ------------------------------------------------------------
+
+    suspend fun currentUser(): Result<UserInfoDto> = withContext(Dispatchers.IO) {
+        call("user info") { api.me() }
+    }
+
+    suspend fun gitUser(): Result<GitUserDto> = withContext(Dispatchers.IO) {
+        call("git user") { api.gitUser() }
+    }
+
+    suspend fun currentApiKey(): Result<com.example.data.model.CurrentApiKeyDto> =
+        withContext(Dispatchers.IO) {
+            call("current api key") { api.currentApiKey() }
+        }
+
+    suspend fun webClientConfig(): Result<WebClientConfigDto> = withContext(Dispatchers.IO) {
+        call("web client config") { api.webClientConfig() }
+    }
+
+    /** Verified LLM models available on the cloud (for model pickers). */
+    suspend fun searchModels(query: String? = null, limit: Int = 50): Result<List<com.example.data.model.LlmModelDto>> =
+        withContext(Dispatchers.IO) {
+            call("search models") { api.searchModels(query = query, limit = limit) }.map { it.items }
+        }
+
+    suspend fun searchProviders(query: String? = null): Result<List<com.example.data.model.LlmProviderDto>> =
+        withContext(Dispatchers.IO) {
+            call("search providers") { api.searchProviders(query) }.map { it.items }
+        }
+
+    suspend fun searchSkills(limit: Int = 50): Result<List<SkillDto>> =
+        withContext(Dispatchers.IO) {
+            call("search skills") { api.searchSkills(limit = limit) }.map { it.items }
+        }
+
+    /** Raw settings JSON (GET /api/v1/settings). */
+    suspend fun settings(): Result<String> = withContext(Dispatchers.IO) {
+        call("settings") { api.settings() }.map { it.string() }
+    }
+
+    /** Stores a settings patch (arbitrary key/value object). */
+    suspend fun storeSettings(patch: Map<String, @JvmSuppressWildcards Any?>): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            call("store settings") { api.storeSettings(patch) }.map { }
         }
 
     // ---- Local helpers ---------------------------------------------------------
@@ -292,28 +562,40 @@ class OpenHandsRepository(
         )
     }
 
-    private fun ConversationDto.toEntity(fallbackTime: Long): ConversationEntity = ConversationEntity(
+    private fun AppConversationDto.toEntity(fallbackTime: Long): ConversationEntity = ConversationEntity(
         id = resolvedId.ifBlank { UUID.randomUUID().toString() },
         title = title ?: "Conversation",
         sandboxStatus = sandboxStatus,
         executionStatus = executionStatus,
-        rawStatus = status,
+        rawStatus = null,
         repository = selectedRepository,
         createdAt = parseTimestamp(createdAt) ?: fallbackTime,
         updatedAt = parseTimestamp(updatedAt) ?: parseTimestamp(createdAt) ?: fallbackTime,
-        cost = cost ?: 0.0,
-        lastMessage = lastMessage
+        cost = cost,
+        lastMessage = null
     )
 
     private fun EventDto.toEntity(conversationId: String): AgentEventEntity {
-        val action = action ?: kind?.substringAfterLast('.')
+        val action = toolName ?: kind?.removeSuffix("Event")?.lowercase()
+        val command = MessagePayloads.argument(toolCall?.arguments, "command")
+        val messageText = message?.takeIf { it.isNotBlank() }
+        val llmText = llmMessage?.contentText()?.takeIf { it.isNotBlank() }
+        val thoughtText = this.thoughtText?.takeIf { it.isNotBlank() }
+        val observationText = this.observationText?.takeIf { it.isNotBlank() }
         val content = when {
-            !message.isNullOrBlank() -> message!!
-            !thought.isNullOrBlank() -> thought!!
-            !content.isNullOrBlank() -> content!!
-            !observation.isNullOrBlank() -> observation!!
-            args?.get("command") is String -> args["command"] as String
+            messageText != null -> messageText
+            llmText != null -> llmText
+            thoughtText != null -> thoughtText
+            observationText != null -> observationText
+            !command.isNullOrBlank() -> command
+            !error.isNullOrBlank() -> error!!
+            !detail.isNullOrBlank() -> detail!!
+            !title.isNullOrBlank() -> title!!
             else -> "(no content)"
+        }
+        val observationRaw = when (val obs = observation) {
+            is Map<*, *> -> obs["content"]?.let { MessagePayloads.contentToText(it) }
+            else -> null
         }
         return AgentEventEntity(
             id = id ?: UUID.randomUUID().toString(),
@@ -322,8 +604,9 @@ class OpenHandsRepository(
             source = source ?: "agent",
             actionType = action,
             content = content,
-            detail = observation?.takeIf { it != content },
-            isError = observation?.contains("error", ignoreCase = true) == true
+            detail = observationRaw?.takeIf { it != content },
+            isError = isError == true || error?.isNotBlank() == true ||
+                (observation is Map<*, *> && (observation["is_error"] as? Boolean) == true)
         )
     }
 
@@ -352,15 +635,18 @@ class OpenHandsRepository(
         eventDao.clearAll()
     }
 
-    private inline fun <T : Any> call(label: String, block: () -> retrofit2.Response<T>): Result<T> {
+    private inline fun <reified T : Any> call(label: String, block: () -> retrofit2.Response<T>): Result<T> {
         return try {
             val response = block()
             val body = response.body()
             when {
                 response.isSuccessful && body != null -> Result.success(body)
-                response.isSuccessful -> Result.failure(
-                    CloudError.Api(response.code(), "$label returned an empty body")
-                )
+                // 200-with-empty-body is legal for Unit responses (delete, patch).
+                response.isSuccessful && T::class == Unit::class ->
+                    @Suppress("UNCHECKED_CAST")
+                    Result.success(Unit as T)
+                response.isSuccessful && body == null ->
+                    Result.failure(CloudError.Api(response.code(), "$label returned an empty body"))
                 response.code() == 401 -> Result.failure(CloudError.Unauthorized())
                 else -> Result.failure(
                     CloudError.Api(response.code(), response.errorBody()?.string()?.take(300) ?: response.message())
@@ -374,6 +660,12 @@ class OpenHandsRepository(
     }
 
     companion object {
+        /** Canonical sandbox workspace root (the runtime file endpoints' base). */
+        const val WORKSPACE_DIR = "/workspace/project"
+
+        /** Provider used when the caller has none selected. */
+        const val DEFAULT_GIT_PROVIDER = "github"
+
         fun parseTimestamp(raw: String?): Long? {
             if (raw.isNullOrBlank()) return null
             return try {

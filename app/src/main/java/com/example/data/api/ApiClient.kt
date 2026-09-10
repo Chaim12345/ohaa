@@ -47,9 +47,12 @@ class AuthInterceptor(private val apiKeyProvider: () -> String) : Interceptor {
             .header("User-Agent", "OpenHands-Canvas-Android/2.0")
             .header("Accept", "application/json")
 
+        // The documented scheme (OpenAPI securitySchemes.APIKeyHeader).
+        // `Authorization: Bearer` is also accepted server-side, but the spec
+        // declares this header, so it is the one we send.
         val key = apiKeyProvider().trim()
         if (key.isNotEmpty()) {
-            builder.header("Authorization", "Bearer $key")
+            builder.header("X-Access-Token", key)
         }
         return chain.proceed(builder.build())
     }

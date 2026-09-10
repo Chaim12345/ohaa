@@ -89,7 +89,8 @@ class OpenHandsRepositoryTest {
     @Test
     fun `network failure maps to CloudError Network and cache survives`() = runTest {
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody("[]").addHeader("Content-Type", "application/json")
+            MockResponse().setResponseCode(200).setBody("""{"items": [], "next_page_id": null}""")
+                .addHeader("Content-Type", "application/json")
         )
         repo.refreshConversations()
         server.shutdown()
@@ -108,10 +109,10 @@ class OpenHandsRepositoryTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 """
-                [
-                  {"id":"c1","title":"Fix README","sandbox_status":"RUNNING","execution_status":"finished","cost":0.08},
+                {"items": [
+                  {"id":"c1","title":"Fix README","sandbox_status":"RUNNING","execution_status":"finished","metrics":{"accumulated_cost":0.08}},
                   {"id":"c2","title":"Rate limit","sandbox_status":"STARTING"}
-                ]
+                ], "next_page_id": null}
                 """.trimIndent()
             ).addHeader("Content-Type", "application/json")
         )
@@ -119,6 +120,17 @@ class OpenHandsRepositoryTest {
         val result = repo.refreshConversations()
         assertTrue(result.isSuccess)
         assertEquals(2, result.getOrThrow().size)
+    }
+
+    @Test
+    fun `refreshConversations requests the search surface not batch get`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"items": [], "next_page_id": null}""")
+                .addHeader("Content-Type", "application/json")
+        )
+        repo.refreshConversations()
+        val request = server.takeRequest()
+        assertTrue(request.path!!.startsWith("/api/v1/app-conversations/search"))
     }
 
     @Test
@@ -143,11 +155,13 @@ class OpenHandsRepositoryTest {
     }
 
     @Test
-    fun `events refresh parses wrapped page and stores rows`() = runTest {
+    fun `events refresh parses spec page and stores rows`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 """
-                {"events":[{"id":"e1","source":"user","message":"hello"}],"next_page_id":null}
+                {"items":[{"id":"e1","source":"user","kind":"MessageEvent",
+                  "llm_message":{"role":"user","content":[{"type":"text","text":"hello"}]}}],
+                 "next_page_id":null}
                 """.trimIndent()
             ).addHeader("Content-Type", "application/json")
         )
@@ -157,5 +171,75 @@ class OpenHandsRepositoryTest {
         assertEquals(1, result.getOrThrow().size)
         val stored = repo.getEventsFlow("conv-x").first()
         assertEquals("hello", stored[0].content)
+    }
+
+    @Test
+    fun `sendMessage posts spec body with role content and run`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"success":true,"sandbox_status":"RUNNING","message":null}"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.sendMessage("conv-1", "do the thing")
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals("/api/v1/app-conversations/conv-1/send-message", request.path)
+        val body = request.body.readUtf8()
+        assertTrue("\"role\":\"user\"" in body.replace(" ", ""))
+        assertTrue("\"run\":true" in body.replace(" ", ""))
+    }
+
+    @Test
+    fun `switchProfile posts profile_name per spec`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"success":true}""")
+                .addHeader("Content-Type", "application/json")
+        )
+        val result = repo.switchProfile("conv-1", "sonnet")
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals("/api/v1/app-conversations/conv-1/switch_profile", request.path)
+        val body = request.body.readUtf8()
+        assertTrue("\"profile_name\":\"sonnet\"" in body.replace(" ", ""))
+    }
+
+    @Test
+    fun `gitChanges hits required path query and maps list response`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"path":"docs/API_SPEC.md","status":"modified"}]"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.gitChanges("conv-1")
+        assertTrue(result.isSuccess)
+        val requestPath = server.takeRequest().path ?: ""
+        assertTrue(requestPath.contains("/git/changes"))
+        assertTrue("path=%2Fworkspace%2Fproject" in requestPath)
+        assertEquals(1, result.getOrThrow().files?.size)
+        assertEquals("docs/API_SPEC.md", result.getOrThrow().files?.get(0)?.displayName)
+    }
+
+    @Test
+    fun `auth header uses the documented X-Access-Token scheme`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"items": [], "next_page_id": null}""")
+                .addHeader("Content-Type", "application/json")
+        )
+        repo.refreshConversations()
+        val request = server.takeRequest()
+        assertEquals("test-key-123", request.getHeader("X-Access-Token"))
+    }
+
+    @Test
+    fun `listProfiles parses profiles array from wrapper`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"profiles":[{"name":"sonnet","model":"anthropic/claude-sonnet-4-5","api_key_set":true}],"active_profile":"sonnet"}"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.listProfiles()
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrThrow().size)
+        assertEquals("sonnet", result.getOrThrow()[0].name)
     }
 }

@@ -191,7 +191,7 @@ fun ConversationDetailScreen(
             }
             gitDiff?.files?.takeIf { it.isNotEmpty() }?.let { files ->
                 item {
-                    GitChangesCard(files, gitDiff.diff)
+                    GitChangesCard(files, gitDiff.diffText)
                 }
             }
             items(events, key = { it.id }) { event ->
@@ -372,7 +372,7 @@ private fun GitChangesCard(files: List<GitChangeDto>, diff: String?) {
                     modifier = Modifier.padding(bottom = 2.dp)
                 ) {
                     Text(
-                        change.file,
+                        change.displayName,
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
