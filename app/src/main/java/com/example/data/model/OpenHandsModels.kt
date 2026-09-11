@@ -33,6 +33,8 @@ data class ImageContentDto(
 data class MessageDto(
     @param:Json(name = "role") val role: String? = null,
     @param:Json(name = "content") val content: Any? = null,
+    @param:Json(name = "thinking_blocks") val thinkingBlocks: List<ThinkingBlockDto>? = null,
+    @param:Json(name = "responses_reasoning_item") val responsesReasoningItem: ReasoningItemModelDto? = null,
     @param:Json(name = "tool_calls") val toolCalls: List<MessageToolCallDto>? = null,
     @param:Json(name = "tool_call_id") val toolCallId: String? = null,
     @param:Json(name = "name") val name: String? = null,
@@ -136,12 +138,16 @@ data class StartConversationRequest(
     @param:Json(name = "conversation_id") val conversationId: String? = null,
     @param:Json(name = "parent_conversation_id") val parentConversationId: String? = null,
     @param:Json(name = "system_message_suffix") val systemMessageSuffix: String? = null,
-    @param:Json(name = "public") val public: Boolean? = null,
+    @param:Json(name = "suggested_task") val suggestedTask: SuggestedTaskDto? = null,
+    @param:Json(name = "trigger") val trigger: String? = null,
     @param:Json(name = "pr_number") val prNumber: List<Int>? = null,
-    @param:Json(name = "observability_span_name") val observabilitySpanName: String? = null,
-    @param:Json(name = "observability_tags") val observabilityTags: List<String>? = null,
+    @param:Json(name = "public") val public: Boolean? = null,
     @param:Json(name = "observability_metadata") val observabilityMetadata: Map<String, String>? = null,
+    @param:Json(name = "observability_tags") val observabilityTags: List<String>? = null,
+    @param:Json(name = "observability_span_name") val observabilitySpanName: String? = null,
+    @param:Json(name = "plugins") val plugins: List<PluginSpecDto>? = null,
     @param:Json(name = "secrets") val secrets: Map<String, String>? = null
+    // `processors` (EventCallbackProcessor) omitted: empty schema in the spec.
 )
 
 /** Legacy name kept for the existing UI/tests. */
@@ -157,8 +163,48 @@ data class StartTaskDto(
     @param:Json(name = "app_conversation_id") val appConversationId: String? = null,
     @param:Json(name = "sandbox_id") val sandboxId: String? = null,
     @param:Json(name = "agent_server_url") val agentServerUrl: String? = null,
+    @param:Json(name = "request") val request: AppConversationStartRequestOutputDto? = null,
     @param:Json(name = "created_at") val createdAt: String? = null,
     @param:Json(name = "updated_at") val updatedAt: String? = null
+)
+
+/**
+ * AppConversationStartRequest-Output — the echoed `request` on StartTask.
+ * The Input twin is StartConversationRequest below; both share wire names.
+ */
+@JsonClass(generateAdapter = true)
+data class AppConversationStartRequestOutputDto(
+    @param:Json(name = "sandbox_id") val sandboxId: String? = null,
+    @param:Json(name = "conversation_id") val conversationId: String? = null,
+    @param:Json(name = "initial_message") val initialMessage: SendMessageRequest? = null,
+    @param:Json(name = "system_message_suffix") val systemMessageSuffix: String? = null,
+    @param:Json(name = "llm_model") val llmModel: String? = null,
+    @param:Json(name = "agent_profile_id") val agentProfileId: String? = null,
+    @param:Json(name = "selected_repository") val selectedRepository: String? = null,
+    @param:Json(name = "selected_branch") val selectedBranch: String? = null,
+    @param:Json(name = "git_provider") val gitProvider: String? = null,
+    @param:Json(name = "suggested_task") val suggestedTask: SuggestedTaskDto? = null,
+    @param:Json(name = "title") val title: String? = null,
+    @param:Json(name = "trigger") val trigger: String? = null,
+    @param:Json(name = "pr_number") val prNumber: List<Int>? = null,
+    @param:Json(name = "parent_conversation_id") val parentConversationId: String? = null,
+    @param:Json(name = "agent_type") val agentType: String? = null,
+    @param:Json(name = "public") val public: Boolean? = null,
+    @param:Json(name = "observability_metadata") val observabilityMetadata: Map<String, String>? = null,
+    @param:Json(name = "observability_tags") val observabilityTags: List<String>? = null,
+    @param:Json(name = "observability_span_name") val observabilitySpanName: String? = null,
+    @param:Json(name = "plugins") val plugins: List<PluginSpecDto>? = null,
+    @param:Json(name = "secrets") val secrets: Map<String, String>? = null
+    // `processors` (EventCallbackProcessor) omitted: empty schema in the spec.
+)
+
+/** PluginSpec — plugin reference in start-request payloads. */
+@JsonClass(generateAdapter = true)
+data class PluginSpecDto(
+    @param:Json(name = "source") val source: String? = null,
+    @param:Json(name = "ref") val ref: String? = null,
+    @param:Json(name = "repo_path") val repoPath: String? = null,
+    @param:Json(name = "parameters") val parameters: Map<String, String>? = null
 )
 
 /** TokenUsage — nested in MetricsSnapshot. */
@@ -182,6 +228,95 @@ data class MetricsDto(
     @param:Json(name = "accumulated_cost") val accumulatedCost: Double = 0.0,
     @param:Json(name = "max_budget_per_task") val maxBudgetPerTask: Double? = null,
     @param:Json(name = "accumulated_token_usage") val accumulatedTokenUsage: TokenUsageDto? = null
+)
+
+/**
+ * Metrics (agent-server, full variant) — richer sibling of MetricsSnapshot used
+ * in webhook ConversationInfo payloads. Moshi ignores absent members.
+ */
+@JsonClass(generateAdapter = true)
+data class MetricsFullDto(
+    @param:Json(name = "model_name") val modelName: String? = null,
+    @param:Json(name = "accumulated_cost") val accumulatedCost: Double? = null,
+    @param:Json(name = "max_budget_per_task") val maxBudgetPerTask: Double? = null,
+    @param:Json(name = "accumulated_token_usage") val accumulatedTokenUsage: TokenUsageDto? = null,
+    @param:Json(name = "costs") val costs: List<CostDto>? = null,
+    @param:Json(name = "response_latencies") val responseLatencies: List<ResponseLatencyDto>? = null,
+    @param:Json(name = "token_usages") val tokenUsages: List<TokenUsageDto>? = null
+)
+
+/** Cost — one entry of MetricsFull.costs. */
+@JsonClass(generateAdapter = true)
+data class CostDto(
+    @param:Json(name = "model") val model: String? = null,
+    @param:Json(name = "cost") val cost: Double? = null,
+    @param:Json(name = "timestamp") val timestamp: Double? = null
+)
+
+/** ResponseLatency — one entry of MetricsFull.response_latencies. */
+@JsonClass(generateAdapter = true)
+data class ResponseLatencyDto(
+    @param:Json(name = "model") val model: String? = null,
+    @param:Json(name = "latency") val latency: Double? = null,
+    @param:Json(name = "response_id") val responseId: String? = null
+)
+
+/** ThinkingBlock — assistant reasoning blocks (Message.thinking_blocks). */
+@JsonClass(generateAdapter = true)
+data class ThinkingBlockDto(
+    @param:Json(name = "type") val type: String? = null,
+    @param:Json(name = "thinking") val thinking: String? = null,
+    @param:Json(name = "signature") val signature: String? = null
+)
+
+/** RedactedThinkingBlock — encrypted variant; `data` holds the payload. */
+@JsonClass(generateAdapter = true)
+data class RedactedThinkingBlockDto(
+    @param:Json(name = "type") val type: String? = null,
+    @param:Json(name = "data") val data: String? = null
+)
+
+/** ReasoningItemModel — OpenAI Responses-style reasoning summary. */
+@JsonClass(generateAdapter = true)
+data class ReasoningItemModelDto(
+    @param:Json(name = "id") val id: String? = null,
+    @param:Json(name = "summary") val summary: List<String>? = null,
+    @param:Json(name = "content") val content: List<String>? = null,
+    @param:Json(name = "encrypted_content") val encryptedContent: String? = null,
+    @param:Json(name = "status") val status: String? = null
+)
+
+/** ConversationStats — ConversationInfo.stats. */
+@JsonClass(generateAdapter = true)
+data class ConversationStatsDto(
+    @param:Json(name = "usage_to_metrics") val usageToMetrics: Map<String, MetricsFullDto>? = null
+)
+
+/** ACPModelInfo — ConversationInfo.available_models entries. */
+@JsonClass(generateAdapter = true)
+data class ACPModelInfoDto(
+    @param:Json(name = "model_id") val modelId: String? = null,
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "description") val description: String? = null
+)
+
+/** ToolAnnotations — MCP-style hints on ClientToolSpec. */
+@JsonClass(generateAdapter = true)
+data class ToolAnnotationsDto(
+    @param:Json(name = "title") val title: String? = null,
+    @param:Json(name = "readOnlyHint") val readOnlyHint: Boolean? = null,
+    @param:Json(name = "destructiveHint") val destructiveHint: Boolean? = null,
+    @param:Json(name = "idempotentHint") val idempotentHint: Boolean? = null,
+    @param:Json(name = "openWorldHint") val openWorldHint: Boolean? = null
+)
+
+/** ClientToolSpec — ConversationInfo.client_tools entries. */
+@JsonClass(generateAdapter = true)
+data class ClientToolSpecDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "description") val description: String? = null,
+    @param:Json(name = "parameters") val parameters: Map<String, String>? = null,
+    @param:Json(name = "annotations") val annotations: ToolAnnotationsDto? = null
 )
 
 /** LaunchedAgentProfile — AppConversation.launched_agent_profile (live: object, not string). */
@@ -353,6 +488,7 @@ data class SandboxDto(
     @param:Json(name = "created_by_user_id") val createdByUserId: String? = null,
     @param:Json(name = "sandbox_spec_id") val sandboxSpecId: String? = null,
     @param:Json(name = "status") val status: String? = null,
+    @param:Json(name = "status_detail") val statusDetail: String? = null,
     @param:Json(name = "session_api_key") val sessionApiKey: String? = null,
     @param:Json(name = "exposed_urls") val exposedUrls: List<ExposedUrlDto>? = null,
     @param:Json(name = "created_at") val createdAt: String? = null
@@ -378,6 +514,7 @@ data class RepositoryDto(
     @param:Json(name = "git_provider") val gitProvider: String? = null,
     @param:Json(name = "is_public") val isPublic: Boolean = false,
     @param:Json(name = "stargazers_count") val stargazersCount: Int? = null,
+    @param:Json(name = "link_header") val linkHeader: String? = null,
     @param:Json(name = "pushed_at") val pushedAt: String? = null,
     @param:Json(name = "owner_type") val ownerType: String? = null,
     @param:Json(name = "main_branch") val mainBranch: String? = null
@@ -459,8 +596,35 @@ data class UserInfoDto(
     @param:Json(name = "v1_enabled") val v1Enabled: Boolean? = null,
     @param:Json(name = "default_sandbox_spec_id") val defaultSandboxSpecId: String? = null,
     @param:Json(name = "active_agent_profile_id") val activeAgentProfileId: String? = null,
+    @param:Json(name = "active_agent_profile_revision") val activeAgentProfileRevision: Int? = null,
     @param:Json(name = "llm_model") val llmModel: String? = null,
-    @param:Json(name = "language") val language: String? = null
+    @param:Json(name = "language") val language: String? = null,
+    @param:Json(name = "user_version") val userVersion: Int? = null,
+    @param:Json(name = "remote_runtime_resource_factor") val remoteRuntimeResourceFactor: Int? = null,
+    @param:Json(name = "secrets_store") val secretsStore: String? = null,
+    @param:Json(name = "enable_sound_notifications") val enableSoundNotifications: Boolean? = null,
+    @param:Json(name = "enable_proactive_conversation_starters") val enableProactiveConversationStarters: Boolean? = null,
+    @param:Json(name = "user_consents_to_analytics") val userConsentsToAnalytics: Boolean? = null,
+    @param:Json(name = "sandbox_base_container_image") val sandboxBaseContainerImage: String? = null,
+    @param:Json(name = "sandbox_runtime_container_image") val sandboxRuntimeContainerImage: String? = null,
+    @param:Json(name = "disabled_skills") val disabledSkills: List<String>? = null,
+    @param:Json(name = "search_api_key") val searchApiKey: String? = null,
+    @param:Json(name = "sandbox_api_key") val sandboxApiKey: String? = null,
+    @param:Json(name = "title_llm_profile") val titleLlmProfile: String? = null,
+    @param:Json(name = "git_full_clone") val gitFullClone: Boolean? = null,
+    @param:Json(name = "agent_settings") val agentSettings: Map<String, String>? = null,
+    @param:Json(name = "conversation_settings") val conversationSettings: ConversationSettingsDto? = null,
+    @param:Json(name = "sandbox_grouping_strategy") val sandboxGroupingStrategy: String? = null,
+    @param:Json(name = "llm_profiles") val llmProfiles: LLMProfilesDto? = null,
+    @param:Json(name = "registered_marketplaces") val registeredMarketplaces: List<MarketplaceRegistrationDto>? = null,
+    @param:Json(name = "inherited_marketplaces") val inheritedMarketplaces: List<MarketplaceRegistrationDto>? = null
+)
+
+/** LLMProfiles — SaasUserInfo.llm_profiles. */
+@JsonClass(generateAdapter = true)
+data class LLMProfilesDto(
+    @param:Json(name = "profiles") val profiles: Map<String, StrictLLMDto>? = null,
+    @param:Json(name = "active") val active: String? = null
 )
 
 /** CurrentApiKeyResponse — GET /api/keys/current. */
@@ -506,7 +670,8 @@ data class LlmModelDto(
 /** CustomSecretWithoutValue. */
 @JsonClass(generateAdapter = true)
 data class SecretDto(
-    @param:Json(name = "name") val name: String = ""
+    @param:Json(name = "name") val name: String = "",
+    @param:Json(name = "description") val description: String? = null
 )
 
 /** CustomSecretCreate — name + value (+ optional description). */
@@ -525,7 +690,8 @@ data class SecretNamesDto(
 
 @JsonClass(generateAdapter = true)
 data class SecretNameItemDto(
-    @param:Json(name = "name") val name: String = ""
+    @param:Json(name = "name") val name: String = "",
+    @param:Json(name = "description") val description: String? = null
 )
 
 /** POSTProviderModel: provider tokens keyed by provider type. */
@@ -616,7 +782,69 @@ data class GitOrganizationsDto(
 @JsonClass(generateAdapter = true)
 data class WebClientConfigDto(
     @param:Json(name = "app_mode") val appMode: String? = null,
-    @param:Json(name = "feature_flags") val featureFlags: Map<String, Any?>? = null
+    @param:Json(name = "posthog_client_key") val posthogClientKey: String? = null,
+    @param:Json(name = "feature_flags") val featureFlags: WebClientFeatureFlagsDto? = null,
+    @param:Json(name = "db_feature_flags") val dbFeatureFlags: Map<String, Boolean>? = null,
+    @param:Json(name = "providers_configured") val providersConfigured: List<String>? = null,
+    @param:Json(name = "maintenance_start_time") val maintenanceStartTime: String? = null,
+    @param:Json(name = "auth_url") val authUrl: String? = null,
+    @param:Json(name = "recaptcha_site_key") val recaptchaSiteKey: String? = null,
+    @param:Json(name = "faulty_models") val faultyModels: List<String>? = null,
+    @param:Json(name = "error_message") val errorMessage: String? = null,
+    @param:Json(name = "updated_at") val updatedAt: String? = null,
+    @param:Json(name = "github_app_slug") val githubAppSlug: String? = null,
+    @param:Json(name = "gitlab_enabled") val gitlabEnabled: Boolean? = null,
+    @param:Json(name = "provider_default_hosts") val providerDefaultHosts: Map<String, String>? = null,
+    @param:Json(name = "slack_enabled") val slackEnabled: Boolean? = null,
+    @param:Json(name = "email_enabled") val emailEnabled: Boolean? = null,
+    @param:Json(name = "email_change_enabled") val emailChangeEnabled: Boolean? = null,
+    @param:Json(name = "acp_providers") val acpProviders: List<ACPProviderConfigDto>? = null,
+    @param:Json(name = "jira_dc_oauth_host") val jiraDcOauthHost: String? = null,
+    @param:Json(name = "jira_dc_service_account_managed") val jiraDcServiceAccountManaged: Boolean? = null,
+    @param:Json(name = "jira_dc_service_account_email") val jiraDcServiceAccountEmail: String? = null,
+    @param:Json(name = "jira_dc_service_account_config_error") val jiraDcServiceAccountConfigError: String? = null,
+    @param:Json(name = "jira_oauth_enabled") val jiraOauthEnabled: Boolean? = null,
+    @param:Json(name = "kind") val kind: String? = null
+)
+
+/** WebClientFeatureFlags — deployment feature toggles. */
+@JsonClass(generateAdapter = true)
+data class WebClientFeatureFlagsDto(
+    @param:Json(name = "enable_billing") val enableBilling: Boolean? = null,
+    @param:Json(name = "hide_llm_settings") val hideLlmSettings: Boolean? = null,
+    @param:Json(name = "enable_jira") val enableJira: Boolean? = null,
+    @param:Json(name = "enable_jira_dc") val enableJiraDc: Boolean? = null,
+    @param:Json(name = "enable_linear") val enableLinear: Boolean? = null,
+    @param:Json(name = "hide_users_page") val hideUsersPage: Boolean? = null,
+    @param:Json(name = "hide_billing_page") val hideBillingPage: Boolean? = null,
+    @param:Json(name = "hide_integrations_page") val hideIntegrationsPage: Boolean? = null,
+    @param:Json(name = "hide_personal_workspaces") val hidePersonalWorkspaces: Boolean? = null,
+    @param:Json(name = "allow_user_llm_configuration") val allowUserLlmConfiguration: Boolean? = null,
+    @param:Json(name = "enable_acp") val enableAcp: Boolean? = null,
+    @param:Json(name = "deployment_mode") val deploymentMode: String? = null,
+    @param:Json(name = "enable_onboarding") val enableOnboarding: Boolean? = null,
+    @param:Json(name = "enable_automations") val enableAutomations: Boolean? = null,
+    @param:Json(name = "enable_agent_canvas_banner") val enableAgentCanvasBanner: Boolean? = null,
+    @param:Json(name = "enable_byor_export") val enableByorExport: Boolean? = null
+)
+
+/** ACPModelOption — model choice offered by an ACP provider. */
+@JsonClass(generateAdapter = true)
+data class ACPModelOptionDto(
+    @param:Json(name = "id") val id: String? = null,
+    @param:Json(name = "label") val label: String? = null
+)
+
+/** ACPProviderConfig — WebClientConfig.acp_providers entries. */
+@JsonClass(generateAdapter = true)
+data class ACPProviderConfigDto(
+    @param:Json(name = "key") val key: String? = null,
+    @param:Json(name = "display_name") val displayName: String? = null,
+    @param:Json(name = "default_command") val defaultCommand: List<String>? = null,
+    @param:Json(name = "default_model") val defaultModel: String? = null,
+    @param:Json(name = "available_models") val availableModels: List<ACPModelOptionDto>? = null,
+    @param:Json(name = "api_key_env_var") val apiKeyEnvVar: String? = null,
+    @param:Json(name = "base_url_env_var") val baseUrlEnvVar: String? = null
 )
 
 /** Error envelope: FastAPI {"detail"} and auth {"error"}. */
@@ -1151,8 +1379,9 @@ data class ProfileInfoDto(
     @param:Json(name = "provider_connection_id") val providerConnectionId: String?
 )
 
+/** org-profiles ProfileDetailResponse — GET /api/organizations/{org_id}/profiles/{name}. */
 @JsonClass(generateAdapter = true)
-data class ProfileDetailResponseDto(
+data class OrgProfileDetailResponseDto(
     @param:Json(name = "name") val name: String?,
     @param:Json(name = "llm") val llm: Map<String, String>?
 )
@@ -1174,12 +1403,34 @@ data class ProfileMutationResponseDto(
 data class ActivateProfileResponseDto(
     @param:Json(name = "name") val name: String?,
     @param:Json(name = "message") val message: String?,
+    @param:Json(name = "model") val model: String?,
     @param:Json(name = "llm") val llm: Map<String, String>?
 )
 
 @JsonClass(generateAdapter = true)
-data class RenameProfileRequestDto(
-    @param:Json(name = "new_name") val newName: String?
+data class ProfileDetailResponseDto(
+    @param:Json(name = "name") val name: String?,
+    @param:Json(name = "config") val config: Map<String, String>?,
+    @param:Json(name = "api_key_set") val apiKeySet: Boolean?,
+    @param:Json(name = "llm") val llm: Map<String, String>?
+)
+
+/** MarketplacePluginPreview — entry of MarketplaceSkillsPreviewResponse.plugins. */
+@JsonClass(generateAdapter = true)
+data class MarketplacePluginPreviewDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "description") val description: String? = null,
+    @param:Json(name = "source") val source: String? = null,
+    @param:Json(name = "marketplace") val marketplace: String? = null
+)
+
+/** MarketplaceSkillsPreviewResponse — POST /api/v1/skills/marketplace-skills. */
+@JsonClass(generateAdapter = true)
+data class MarketplaceSkillsPreviewResponseDto(
+    @param:Json(name = "skills") val skills: List<SkillDto>? = null,
+    @param:Json(name = "plugins") val plugins: List<MarketplacePluginPreviewDto>? = null,
+    @param:Json(name = "marketplace_skills") val marketplaceSkills: Map<String, List<String>>? = null,
+    @param:Json(name = "errors") val errors: List<String>? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -1756,8 +2007,14 @@ data class ConversationInfoDto(
     @param:Json(name = "sub_conversation_ids") val subConversationIds: List<String>?,
     @param:Json(name = "tags") val tags: Map<String, String>?,
     @param:Json(name = "current_model_id") val currentModelId: String?,
-    @param:Json(name = "available_models") val availableModels: List<String>?,
+    @param:Json(name = "available_models") val availableModels: List<ACPModelInfoDto>?,
     @param:Json(name = "supports_runtime_model_switch") val supportsRuntimeModelSwitch: Boolean?,
     @param:Json(name = "launched_agent_profile") val launchedAgentProfile: LaunchedAgentProfileDto?,
-    @param:Json(name = "client_tools") val clientTools: List<String>?
+    @param:Json(name = "client_tools") val clientTools: List<ClientToolSpecDto>?,
+    @param:Json(name = "stats") val stats: ConversationStatsDto?,
+    @param:Json(name = "agent_state") val agentState: String?,
+    @param:Json(name = "metrics") val metrics: MetricsFullDto?
+    // Spec fields intentionally not modeled (Moshi cannot codegen oneOf/discriminated
+    // unions): workspace, agent, confirmation_policy, security_analyzer,
+    // secret_registry, hook_config. Raw payloads still decode; those keys are dropped.
 )

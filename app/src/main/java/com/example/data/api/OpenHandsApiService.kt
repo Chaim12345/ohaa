@@ -131,7 +131,7 @@ interface OpenHandsApiService {
     ): Response<AppConversationDto>
 
     @DELETE("api/v1/app-conversations/{conversation_id}")
-    suspend fun deleteConversation(@Path("conversation_id") conversationId: String): Response<Unit>
+    suspend fun deleteConversation(@Path("conversation_id") conversationId: String): Response<SuccessDto>
 
     /** Sandbox must be RUNNING; resume it first if PAUSED. */
     @POST("api/v1/app-conversations/{conversation_id}/send-message")
@@ -361,25 +361,25 @@ interface OpenHandsApiService {
     suspend fun listProfiles(): Response<LlmProfileListDto>
 
     @GET("api/v1/settings/profiles/{name}")
-    suspend fun getProfile(@Path("name") name: String): Response<ResponseBody>
+    suspend fun getProfile(@Path("name") name: String): Response<ProfileDetailResponseDto>
 
     @POST("api/v1/settings/profiles/{name}")
     suspend fun saveProfile(
         @Path("name") name: String,
-        @Body body: Map<String, @JvmSuppressWildcards Any?>
-    ): Response<ResponseBody>
+        @Body body: SaveProfileRequestDto
+    ): Response<ProfileMutationResponseDto>
 
     @DELETE("api/v1/settings/profiles/{name}")
-    suspend fun deleteProfile(@Path("name") name: String): Response<ResponseBody>
+    suspend fun deleteProfile(@Path("name") name: String): Response<ProfileMutationResponseDto>
 
     @POST("api/v1/settings/profiles/{name}/activate")
-    suspend fun activateProfile(@Path("name") name: String): Response<ResponseBody>
+    suspend fun activateProfile(@Path("name") name: String): Response<ActivateProfileResponseDto>
 
     @POST("api/v1/settings/profiles/{name}/rename")
     suspend fun renameProfile(
         @Path("name") name: String,
         @Body request: RenameProfileRequest
-    ): Response<ResponseBody>
+    ): Response<ProfileMutationResponseDto>
 
     @GET("api/v1/skills/search")
     suspend fun searchSkills(
@@ -389,7 +389,7 @@ interface OpenHandsApiService {
 
     /** Body is an array of marketplace registrations ({name, source, …}). */
     @POST("api/v1/skills/marketplace-skills")
-    suspend fun marketplaceSkills(@Body body: List<@JvmSuppressWildcards Any?>): Response<ResponseBody>
+    suspend fun marketplaceSkills(@Body body: List<@JvmSuppressWildcards MarketplaceRegistrationDto>): Response<MarketplaceSkillsPreviewResponseDto>
 
     @GET("api/v1/config/providers/search")
     suspend fun searchProviders(
@@ -584,7 +584,8 @@ interface OpenHandsApiService {
     @POST("api/agent-profiles/{name}")
     suspend fun saveAgentProfile(
         @Path("name") `name`: String,
-        @Query("org_id") orgId: String? = null
+        @Query("org_id") orgId: String? = null,
+        @Body settings: Map<String, String>
     ): Response<AgentProfileMutationResponseDto>
 
     @DELETE("api/agent-profiles/{name}")
@@ -637,7 +638,7 @@ interface OpenHandsApiService {
     suspend fun hasPaymentMethod(): Response<Boolean>
 
     @GET("api/billing/subscription-access")
-    suspend fun getSubscriptionAccess(): Response<Unit>
+    suspend fun getSubscriptionAccess(): Response<SubscriptionAccessResponseDto>
 
     @GET("api/billing/success")
     suspend fun successCallback(
@@ -645,7 +646,9 @@ interface OpenHandsApiService {
     ): Response<Unit>
 
     @POST("api/complete_onboarding")
-    suspend fun completeOnboarding(): Response<Unit>
+    suspend fun completeOnboarding(
+        @Body body: OnboardingSubmissionDto
+    ): Response<Unit>
 
     @POST("api/email")
     suspend fun updateEmail(
@@ -653,7 +656,9 @@ interface OpenHandsApiService {
     ): Response<Unit>
 
     @PUT("api/email/resend")
-    suspend fun resendEmailVerification(): Response<Unit>
+    suspend fun resendEmailVerification(
+        @Body body: ResendEmailVerificationRequestDto
+    ): Response<Unit>
 
     @GET("api/email/verified")
     suspend fun verifiedEmail(): Response<Unit>
@@ -741,7 +746,7 @@ interface OpenHandsApiService {
     @DELETE("api/organizations/{org_id}")
     suspend fun deleteOrg(
         @Path("org_id") orgId: String
-    ): Response<Unit>
+    ): Response<Map<String, String>>
 
     @PATCH("api/organizations/{org_id}")
     suspend fun updateOrg(
@@ -853,7 +858,7 @@ interface OpenHandsApiService {
     suspend fun disconnectGitOrganization(
         @Path("org_id") orgId: String,
         @Path("claim_id") claimId: String
-    ): Response<Unit>
+    ): Response<Map<String, String>>
 
     @GET("api/organizations/{org_id}/me")
     suspend fun getMe(
@@ -927,7 +932,7 @@ interface OpenHandsApiService {
     suspend fun orgGetProfile(
         @Path("org_id") orgId: String,
         @Path("name") `name`: String
-    ): Response<ProfileDetailResponseDto>
+    ): Response<OrgProfileDetailResponseDto>
 
     @POST("api/organizations/{org_id}/profiles/{name}")
     suspend fun orgSaveProfile(
@@ -1022,18 +1027,18 @@ interface OpenHandsApiService {
         @Path("user_id") userId: String,
         @Path("org_id") orgId: String,
         @Path("key_name") keyName: String
-    ): Response<Unit>
+    ): Response<Map<String, String>>
 
     @GET("api/shared-conversations")
     suspend fun batchGetSharedConversations(
         @Query("ids") ids: String
-    ): Response<Unit>
+    ): Response<List<SharedConversationDto>>
 
     @GET("api/shared-events")
     suspend fun batchGetSharedEvents(
         @Query("conversation_id") conversationId: String,
         @Query("id") id: String
-    ): Response<Unit>
+    ): Response<List<EventDto>>
 
     @GET("api/shared-events/count")
     suspend fun countSharedEvents(
@@ -1058,7 +1063,7 @@ interface OpenHandsApiService {
     suspend fun getSharedEvent(
         @Path("conversation_id") conversationId: String,
         @Path("event_id") eventId: String
-    ): Response<Unit>
+    ): Response<EventDto>
 
     @GET("api/users/app")
     suspend fun getUserAppSettings(): Response<UserAppSettingsResponseDto>

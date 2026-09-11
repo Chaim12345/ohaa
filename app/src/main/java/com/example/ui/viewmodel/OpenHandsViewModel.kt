@@ -12,10 +12,13 @@ import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
 import com.example.data.model.ConversationUiStatus
 import com.example.data.model.GitDiffDto
+import com.example.data.model.LlmProfileDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
+import com.example.data.model.SecretDto
 import com.example.data.model.StartTaskDto
+import com.example.data.model.UserInfoDto
 import com.example.data.repository.CloudError
 import com.example.data.repository.OpenHandsRepository
 import com.example.data.settings.AgentKind
@@ -71,6 +74,12 @@ data class OpenHandsUiState(
     val healthMessage: String? = null,
     val healthOk: Boolean? = null,
     val credits: Double? = null,
+    // Cloud account / profiles / secrets (Settings, live API key required)
+    val account: UserInfoDto? = null,
+    val cloudProfiles: List<LlmProfileDto> = emptyList(),
+    val activeCloudProfile: String? = null,
+    val secrets: List<SecretDto> = emptyList(),
+    val isCloudSettingsLoading: Boolean = false,
     // Agent & LLM — what the user sees as "active" right now. Defaults to the
     // plain OpenHands agent; ACP is only ever used when explicitly chosen.
     val activeProfile: AgentProfile = AgentProfile(),
@@ -576,6 +585,7 @@ class OpenHandsViewModel(application: Application) :
                         isOnline = true,
                         offlineMessage = null
                     )
+                    refreshCloudSettings()
                 }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(
@@ -583,6 +593,116 @@ class OpenHandsViewModel(application: Application) :
                         healthOk = false,
                         healthMessage = err.toUserMessage()
                     )
+                }
+        }
+    }
+
+    // ---- Cloud account / profiles / secrets ----------------------------------
+
+    /** Loads account, cloud profiles and secrets in one pass for the Settings screen. */
+    fun refreshCloudSettings() {
+        if (!repository.isConfigured()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isCloudSettingsLoading = true)
+            val account = repository.currentUser().getOrNull()
+            val profiles = repository.profilesWithActive().getOrNull()
+            val secrets = repository.searchSecrets().getOrNull().orEmpty()
+            _uiState.value = _uiState.value.copy(
+                isCloudSettingsLoading = false,
+                account = account,
+                cloudProfiles = profiles?.profiles.orEmpty(),
+                activeCloudProfile = profiles?.activeProfile,
+                secrets = secrets
+            )
+        }
+    }
+
+    fun activateCloudProfile(name: String) {
+        viewModelScope.launch {
+            repository.activateCloudProfile(name)
+                .onSuccess { msg ->
+                    val profiles = repository.profilesWithActive().getOrNull()
+                    _uiState.value = _uiState.value.copy(
+                        notification = msg,
+                        cloudProfiles = profiles?.profiles.orEmpty(),
+                        activeCloudProfile = profiles?.activeProfile ?: name
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    fun deleteCloudProfile(name: String) {
+        viewModelScope.launch {
+            repository.deleteCloudProfile(name)
+                .onSuccess { msg ->
+                    val profiles = repository.profilesWithActive().getOrNull()
+                    _uiState.value = _uiState.value.copy(
+                        notification = msg,
+                        cloudProfiles = profiles?.profiles.orEmpty(),
+                        activeCloudProfile = profiles?.activeProfile?.takeIf { it != name }
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    fun renameCloudProfile(name: String, newName: String) {
+        if (newName.isBlank()) {
+            _uiState.value = _uiState.value.copy(notification = "Profile name cannot be empty")
+            return
+        }
+        viewModelScope.launch {
+            repository.renameCloudProfile(name, newName.trim())
+                .onSuccess { msg ->
+                    val profiles = repository.profilesWithActive().getOrNull()
+                    _uiState.value = _uiState.value.copy(
+                        notification = msg,
+                        cloudProfiles = profiles?.profiles.orEmpty(),
+                        activeCloudProfile = if (_uiState.value.activeCloudProfile == name)
+                            profiles?.activeProfile ?: newName else _uiState.value.activeCloudProfile
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    fun addSecret(name: String, value: String, description: String?) {
+        if (name.isBlank() || value.isBlank()) {
+            _uiState.value = _uiState.value.copy(notification = "Secret needs both a name and a value")
+            return
+        }
+        viewModelScope.launch {
+            repository.createSecret(name.trim(), value, description?.trim()?.takeIf { it.isNotBlank() })
+                .onSuccess { body ->
+                    _uiState.value = _uiState.value.copy(
+                        notification = body.message.ifBlank { "Secret '$name' created" },
+                        secrets = repository.searchSecrets().getOrNull().orEmpty()
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    fun deleteSecret(name: String) {
+        viewModelScope.launch {
+            repository.deleteSecret(name)
+                .onSuccess { body ->
+                    _uiState.value = _uiState.value.copy(
+                        notification = body.message.ifBlank { "Secret '$name' deleted" },
+                        secrets = _uiState.value.secrets.filterNot { it.name == name }
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
                 }
         }
     }

@@ -15,9 +15,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -49,6 +53,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.LlmProfileDto
+import com.example.data.model.SecretDto
+import com.example.data.model.UserInfoDto
 import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
 import com.example.ui.components.AgentProfileDialog
@@ -68,6 +75,11 @@ fun SettingsScreen(
     credits: Double?,
     isDemoMode: Boolean,
     activeProfile: AgentProfile,
+    account: UserInfoDto? = null,
+    cloudProfiles: List<LlmProfileDto> = emptyList(),
+    activeCloudProfile: String? = null,
+    secrets: List<SecretDto> = emptyList(),
+    isCloudSettingsLoading: Boolean = false,
     onApiKeyChanged: (String) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
     onSaveConfig: () -> Unit,
@@ -76,11 +88,21 @@ fun SettingsScreen(
     onClearCache: () -> Unit,
     onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit
+    onAcpCommandChanged: (String) -> Unit,
+    onRefreshCloudSettings: () -> Unit = {},
+    onActivateCloudProfile: (String) -> Unit = {},
+    onDeleteCloudProfile: (String) -> Unit = {},
+    onRenameCloudProfile: (String, String) -> Unit = { _, _ -> },
+    onAddSecret: (String, String, String?) -> Unit = { _, _, _ -> },
+    onDeleteSecret: (String) -> Unit = {}
 ) {
     var apiKeyVisible by remember { mutableStateOf(false) }
     var showClearCacheConfirmation by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
+    var renamingProfile by remember { mutableStateOf<String?>(null) }
+    var deletingProfile by remember { mutableStateOf<String?>(null) }
+    var deletingSecret by remember { mutableStateOf<String?>(null) }
+    var showAddSecretDialog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -222,6 +244,241 @@ fun SettingsScreen(
             )
         }
 
+        if (!isDemoMode) {
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider(color = CanvasBorder.copy(alpha = 0.5f))
+            Spacer(Modifier.height(16.dp))
+
+            // ---- Account ------------------------------------------------------
+            account?.let { info ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("account_section")
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = CanvasSuccess,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "Signed in as ${info.email ?: "unknown"}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        info.orgName?.let { org ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Organization: $org${info.role?.let { " · $it" } ?: ""}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // ---- Cloud profiles --------------------------------------------------
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cloud profiles", style = MaterialTheme.typography.titleMedium)
+                Row {
+                    if (isCloudSettingsLoading) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    IconButton(
+                        onClick = onRefreshCloudSettings,
+                        modifier = Modifier.testTag("btn_refresh_cloud")
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh cloud settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Text(
+                "Server-side LLM profiles. The active one is used for new cloud conversations.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+            if (cloudProfiles.isEmpty()) {
+                Text(
+                    "No cloud profiles yet — create one in the OpenHands web app.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("cloud_profiles_section")
+                )
+            } else {
+                cloudProfiles.forEach { profile ->
+                    val isActive = profile.name == activeCloudProfile
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isActive) CanvasSuccess.copy(alpha = 0.08f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .testTag("profile_row_${profile.name}")
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    profile.name,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isActive) {
+                                    Text(
+                                        "ACTIVE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CanvasSuccess,
+                                        modifier = Modifier.testTag("active_profile_badge")
+                                    )
+                                }
+                            }
+                            profile.model?.let { model ->
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    model,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            profile.baseUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                Text(
+                                    url,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (!isActive) {
+                                    TextButton(
+                                        onClick = { onActivateCloudProfile(profile.name) },
+                                        modifier = Modifier.testTag("btn_activate_profile_${profile.name}")
+                                    ) {
+                                        Text("Activate", color = CanvasPrimaryDeep)
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { renamingProfile = profile.name },
+                                    modifier = Modifier.testTag("btn_rename_profile_${profile.name}")
+                                ) {
+                                    Icon(
+                                        Icons.Default.DriveFileRenameOutline,
+                                        contentDescription = "Rename profile",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { deletingProfile = profile.name },
+                                    modifier = Modifier.testTag("btn_delete_profile_${profile.name}")
+                                ) {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete profile",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Secrets ---------------------------------------------------------
+            Spacer(Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Secrets", style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(
+                    onClick = { showAddSecretDialog = true },
+                    modifier = Modifier.testTag("btn_add_secret")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add secret")
+                }
+            }
+            Text(
+                "Reusable values the agent can reference without seeing them in chat.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+            if (secrets.isEmpty()) {
+                Text(
+                    "No secrets yet.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("secrets_section")
+                )
+            } else {
+                secrets.forEach { secret ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .testTag("secret_row_${secret.name}")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(secret.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                secret.description?.let { desc ->
+                                    Text(
+                                        desc,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { deletingSecret = secret.name },
+                                modifier = Modifier.testTag("btn_delete_secret_${secret.name}")
+                            ) {
+                                Icon(
+                                    Icons.Default.DeleteOutline,
+                                    contentDescription = "Delete secret",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
         HorizontalDivider(color = CanvasBorder.copy(alpha = 0.5f))
         Spacer(Modifier.height(16.dp))
@@ -298,4 +555,208 @@ fun SettingsScreen(
             title = "Agent & LLM · default"
         )
     }
+
+    renamingProfile?.let { name ->
+        RenameProfileDialog(
+            currentName = name,
+            onDismiss = { renamingProfile = null },
+            onConfirm = { newName ->
+                renamingProfile = null
+                onRenameCloudProfile(name, newName)
+            }
+        )
+    }
+
+    deletingProfile?.let { name ->
+        AlertDialog(
+            onDismissRequest = { deletingProfile = null },
+            title = { Text("Delete cloud profile?") },
+            text = { Text("'$name' will be removed from your account. This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingProfile = null
+                        onDeleteCloudProfile(name)
+                    },
+                    modifier = Modifier.testTag("btn_confirm_delete_profile")
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingProfile = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    deletingSecret?.let { name ->
+        AlertDialog(
+            onDismissRequest = { deletingSecret = null },
+            title = { Text("Delete secret?") },
+            text = { Text("'$name' will be removed from your account. This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingSecret = null
+                        onDeleteSecret(name)
+                    },
+                    modifier = Modifier.testTag("btn_confirm_delete_secret")
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingSecret = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showAddSecretDialog) {
+        AddSecretDialog(
+            onDismiss = { showAddSecretDialog = false },
+            onCreate = { name, value, description ->
+                showAddSecretDialog = false
+                onAddSecret(name, value, description)
+            }
+        )
+    }
+}
+
+@Composable
+private fun RenameProfileDialog(
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var newName by remember(currentName) { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename profile") },
+        text = {
+            Column {
+                Text(
+                    "'$currentName' — letters, digits, dots, dashes and underscores.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("New name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CanvasPrimary,
+                        unfocusedBorderColor = CanvasBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("field_rename_profile")
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(newName) },
+                enabled = newName.isNotBlank(),
+                modifier = Modifier.testTag("btn_confirm_rename")
+            ) {
+                Text("Rename", color = CanvasPrimaryDeep)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun AddSecretDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String, String?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var value by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var valueVisible by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add secret") },
+        text = {
+            Column {
+                Text(
+                    "The value is stored server-side; the agent only sees the name.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CanvasPrimary,
+                        unfocusedBorderColor = CanvasBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("field_secret_name")
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    label = { Text("Value") },
+                    singleLine = true,
+                    visualTransformation = if (valueVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { valueVisible = !valueVisible }) {
+                            Icon(
+                                imageVector = if (valueVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (valueVisible) "Hide secret value" else "Show secret value"
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CanvasPrimary,
+                        unfocusedBorderColor = CanvasBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("field_secret_value")
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (optional)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CanvasPrimary,
+                        unfocusedBorderColor = CanvasBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("field_secret_description")
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onCreate(name, value, description) },
+                enabled = name.isNotBlank() && value.isNotBlank(),
+                modifier = Modifier.testTag("btn_confirm_add_secret")
+            ) {
+                Text("Add", color = CanvasPrimaryDeep)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

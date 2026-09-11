@@ -25,8 +25,10 @@ import com.example.data.model.PageDto
 import com.example.data.model.PendingMessageResponseDto
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
+import com.example.data.model.RenameProfileRequest
 import com.example.data.model.SandboxDto
 import com.example.data.model.SandboxSpecDto
+import com.example.data.model.SecretDto
 import com.example.data.model.SendMessageRequest
 import com.example.data.model.SkillDto
 import com.example.data.model.StartTaskDto
@@ -101,6 +103,26 @@ class OpenHandsRepository(
     suspend fun getCredits(): Result<CloudCredits> = withContext(Dispatchers.IO) {
         call("credits") { api.credits() }.map { body ->
             CloudCredits(body?.credits?.toDoubleOrNull())
+        }
+    }
+
+    // ---- Cloud profiles / secrets / account (Settings) --------------------------
+
+    suspend fun activateCloudProfile(name: String): Result<String> = withContext(Dispatchers.IO) {
+        call("activate profile") { api.activateProfile(name) }.map { body ->
+            body.message?.takeIf { it.isNotBlank() } ?: "Profile '$name' activated"
+        }
+    }
+
+    suspend fun deleteCloudProfile(name: String): Result<String> = withContext(Dispatchers.IO) {
+        call("delete profile") { api.deleteProfile(name) }.map { body ->
+            body.message?.takeIf { it.isNotBlank() } ?: "Profile '$name' deleted"
+        }
+    }
+
+    suspend fun renameCloudProfile(name: String, newName: String): Result<String> = withContext(Dispatchers.IO) {
+        call("rename profile") { api.renameProfile(name, RenameProfileRequest(newName)) }.map { body ->
+            body.message?.takeIf { it.isNotBlank() } ?: "Profile renamed to '$newName'"
         }
     }
 
@@ -439,9 +461,9 @@ class OpenHandsRepository(
             call("search secrets") { api.searchSecrets(nameContains) }.map { it.items }
         }
 
-    suspend fun createSecret(name: String, value: String): Result<MessageResponseDto> =
+    suspend fun createSecret(name: String, value: String, description: String? = null): Result<MessageResponseDto> =
         withContext(Dispatchers.IO) {
-            call("create secret") { api.createSecret(CreateSecretRequest(name, value)) }
+            call("create secret") { api.createSecret(CreateSecretRequest(name, value, description)) }
         }
 
     /** Renames a secret; values are write-only and cannot be updated. */

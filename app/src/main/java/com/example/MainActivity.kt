@@ -197,6 +197,11 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               credits = uiState.credits,
               isDemoMode = uiState.isDemoMode,
               activeProfile = uiState.activeProfile,
+              account = uiState.account,
+              cloudProfiles = uiState.cloudProfiles,
+              activeCloudProfile = uiState.activeCloudProfile,
+              secrets = uiState.secrets,
+              isCloudSettingsLoading = uiState.isCloudSettingsLoading,
               onApiKeyChanged = { viewModel.updateApiKeyInput(it) },
               onBaseUrlChanged = { viewModel.updateBaseUrlInput(it) },
               onSaveConfig = { viewModel.saveConfig() },
@@ -205,7 +210,13 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               onClearCache = { viewModel.clearLocalData() },
               onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
               onModelChanged = { model -> viewModel.setModel(model) },
-              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) }
+              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) },
+              onRefreshCloudSettings = { viewModel.refreshCloudSettings() },
+              onActivateCloudProfile = { name -> viewModel.activateCloudProfile(name) },
+              onDeleteCloudProfile = { name -> viewModel.deleteCloudProfile(name) },
+              onRenameCloudProfile = { name, newName -> viewModel.renameCloudProfile(name, newName) },
+              onAddSecret = { name, value, description -> viewModel.addSecret(name, value, description) },
+              onDeleteSecret = { name -> viewModel.deleteSecret(name) }
           )
         }
       }

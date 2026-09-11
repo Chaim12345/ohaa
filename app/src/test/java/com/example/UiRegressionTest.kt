@@ -10,14 +10,19 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.example.data.model.ConversationUiStatus
+import com.example.data.model.LlmProfileDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
+import com.example.data.model.SecretDto
+import com.example.data.model.UserInfoDto
 import com.example.data.model.BranchDto
 import com.example.data.model.RepositoryDto
 import com.example.data.settings.AgentKind
@@ -183,6 +188,158 @@ class UiRegressionTest {
         assertTrue(!cleared)
         composeTestRule.onNodeWithTag("btn_confirm_clear_cache").performClick()
         assertTrue(cleared)
+    }
+
+    private fun settingsTestContent(
+        isDemoMode: Boolean = false,
+        account: UserInfoDto? = null,
+        cloudProfiles: List<LlmProfileDto> = emptyList(),
+        activeCloudProfile: String? = null,
+        secrets: List<SecretDto> = emptyList(),
+        onActivateCloudProfile: (String) -> Unit = {},
+        onDeleteCloudProfile: (String) -> Unit = {},
+        onRenameCloudProfile: (String, String) -> Unit = { _, _ -> },
+        onAddSecret: (String, String, String?) -> Unit = { _, _, _ -> },
+        onDeleteSecret: (String) -> Unit = {}
+    ): @Composable () -> Unit = {
+        MyApplicationTheme {
+            SettingsScreen(
+                apiKey = "key",
+                baseUrl = "https://app.all-hands.dev",
+                isLoading = false,
+                healthMessage = null,
+                healthOk = null,
+                credits = null,
+                isDemoMode = isDemoMode,
+                activeProfile = AgentProfile(),
+                account = account,
+                cloudProfiles = cloudProfiles,
+                activeCloudProfile = activeCloudProfile,
+                secrets = secrets,
+                onApiKeyChanged = {},
+                onBaseUrlChanged = {},
+                onSaveConfig = {},
+                onTestConnection = {},
+                onClearApiKey = {},
+                onClearCache = {},
+                onAgentKindChanged = {},
+                onModelChanged = {},
+                onAcpCommandChanged = {},
+                onActivateCloudProfile = onActivateCloudProfile,
+                onDeleteCloudProfile = onDeleteCloudProfile,
+                onRenameCloudProfile = onRenameCloudProfile,
+                onAddSecret = onAddSecret,
+                onDeleteSecret = onDeleteSecret
+            )
+        }
+    }
+
+    @Test
+    fun `account card shows signed-in email and organization`() {
+        composeTestRule.setContent(settingsTestContent(
+            account = UserInfoDto(email = "dev@example.com", orgName = "Acme", role = "member")
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("account_section"))
+        composeTestRule.onNodeWithText("Signed in as dev@example.com").assertExists()
+        composeTestRule.onNodeWithText("Organization: Acme · member").assertExists()
+    }
+
+    @Test
+    fun `cloud profile rows render with active badge and activate fires callback`() {
+        var activated: String? = null
+        composeTestRule.setContent(settingsTestContent(
+            cloudProfiles = listOf(
+                LlmProfileDto(name = "default", model = "anthropic/claude-sonnet-4"),
+                LlmProfileDto(name = "cheap", model = "openai/gpt-5-mini")
+            ),
+            activeCloudProfile = "default",
+            onActivateCloudProfile = { activated = it }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_activate_profile_cheap"))
+        composeTestRule.onNodeWithText("default").assertExists()
+        composeTestRule.onNodeWithText("cheap").assertExists()
+        composeTestRule.onNodeWithTag("active_profile_badge").assertExists()
+        // The active profile shows no Activate button of its own.
+        composeTestRule.onNodeWithTag("btn_activate_profile_default").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("btn_activate_profile_cheap").performClick()
+        assertTrue(activated == "cheap")
+    }
+
+    @Test
+    fun `deleting a cloud profile requires confirmation`() {
+        var deleted: String? = null
+        composeTestRule.setContent(settingsTestContent(
+            cloudProfiles = listOf(LlmProfileDto(name = "staging")),
+            onDeleteCloudProfile = { deleted = it }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_delete_profile_staging"))
+        composeTestRule.onNodeWithTag("btn_delete_profile_staging").performClick()
+        composeTestRule.onNodeWithText("Delete cloud profile?").assertExists()
+        assertTrue(deleted == null)
+        composeTestRule.onNodeWithTag("btn_confirm_delete_profile").performClick()
+        assertTrue(deleted == "staging")
+    }
+
+    @Test
+    fun `renaming a cloud profile submits the new name`() {
+        var renamed: Pair<String, String>? = null
+        composeTestRule.setContent(settingsTestContent(
+            cloudProfiles = listOf(LlmProfileDto(name = "old-name")),
+            onRenameCloudProfile = { from, to -> renamed = from to to }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_rename_profile_old-name"))
+        composeTestRule.onNodeWithTag("btn_rename_profile_old-name").performClick()
+        composeTestRule.onNodeWithText("Rename profile").assertExists()
+        composeTestRule.onNodeWithTag("field_rename_profile").performTextClearance()
+        composeTestRule.onNodeWithTag("field_rename_profile").performTextInput("old-name-v2")
+        composeTestRule.onNodeWithTag("btn_confirm_rename").performClick()
+        assertTrue(renamed == "old-name" to "old-name-v2")
+    }
+
+    @Test
+    fun `add secret dialog collects name value and description`() {
+        var created: Triple<String, String, String?>? = null
+        composeTestRule.setContent(settingsTestContent(
+            secrets = emptyList(),
+            onAddSecret = { n, v, d -> created = Triple(n, v, d) }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_add_secret"))
+        composeTestRule.onNodeWithTag("btn_add_secret").performClick()
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("field_secret_name").performTextInput("API_KEY")
+        composeTestRule.onNodeWithTag("field_secret_value").performTextInput("hunter2")
+        composeTestRule.onNodeWithTag("field_secret_description").performTextInput("Deploy key")
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").performClick()
+        assertTrue(created == Triple("API_KEY", "hunter2", "Deploy key"))
+    }
+
+    @Test
+    fun `deleting a secret requires confirmation`() {
+        var deleted: String? = null
+        composeTestRule.setContent(settingsTestContent(
+            secrets = listOf(SecretDto(name = "API_KEY", description = "Deploy key")),
+            onDeleteSecret = { deleted = it }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_delete_secret_API_KEY"))
+        composeTestRule.onNodeWithText("Deploy key").assertExists()
+        composeTestRule.onNodeWithTag("btn_delete_secret_API_KEY").performClick()
+        composeTestRule.onNodeWithText("Delete secret?").assertExists()
+        assertTrue(deleted == null)
+        composeTestRule.onNodeWithTag("btn_confirm_delete_secret").performClick()
+        assertTrue(deleted == "API_KEY")
+    }
+
+    @Test
+    fun `cloud sections stay hidden in demo mode`() {
+        composeTestRule.setContent(settingsTestContent(isDemoMode = true))
+        composeTestRule.onNodeWithTag("btn_add_secret").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("btn_refresh_cloud").assertDoesNotExist()
     }
 
     @Test
