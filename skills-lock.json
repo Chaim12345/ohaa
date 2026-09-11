@@ -1,0 +1,377 @@
+{
+  "version": 1,
+  "skills": {
+    "android": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android/SKILL.md",
+      "computedHash": "c40e12dd42228270e6493151888756c515d137b591fe119504a99301823a4a44"
+    },
+    "android-engineering": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android-engineering/SKILL.md",
+      "computedHash": "e449cf5463f208cef5cc82a5d99a6f9dffd1fc8377336f8516843fdbbc32c936"
+    },
+    "android-jetpack-compose": {
+      "source": "thebushidocollective/han",
+      "sourceType": "github",
+      "skillPath": "plugins/specialized/android/skills/jetpack-compose/SKILL.md",
+      "computedHash": "7c17e8d8ecfc7159fa18a4359cc0e53868134b6bfd28e825b5c5473d52987853"
+    },
+    "android-quality": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android-quality/SKILL.md",
+      "computedHash": "df694750135e384cdebec770770950b7662fc8ac795cee7e958e01fc094953ff"
+    },
+    "android-release": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android-release/SKILL.md",
+      "computedHash": "dd6489b7e4027bf4d1c90bf41d67ca6f961d92e03730cd41d600dd1a3000428e"
+    },
+    "android-security": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android-security/SKILL.md",
+      "computedHash": "7ad8d904e9d6598436da274ffcc3a3d5a1068bef1fb2f96cd3f92f87b1401e4a"
+    },
+    "android-ui": {
+      "source": "felixgraeber/claude-android-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/android-ui/SKILL.md",
+      "computedHash": "8baf7a67c989b3fa59099f862122d7bbb9197658967beb71d24209674a629276"
+    },
+    "applying-testing-strategies": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "fundamentals/strategies/applying-testing-strategies/SKILL.md",
+      "computedHash": "6b25f70cdf8028e70f6db4cdfd3e9ec198f57c4ae195369f35dfc250794c2634"
+    },
+    "asserting-bounds-and-dimensions": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/assertions/asserting-bounds-and-dimensions/SKILL.md",
+      "computedHash": "790ee3c4d6616d462e4e54ae685bc9508d0b17e489b7b23e7bc8c7df6d63abdc"
+    },
+    "asserting-node-state-and-text": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/assertions/asserting-node-state-and-text/SKILL.md",
+      "computedHash": "d1e3d011ec0fd37788d70afdcc3ff80797a3ecfcde27eaccb1b215ba6540ec08"
+    },
+    "auditing-compose-test-suite": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/audit/auditing-compose-test-suite/SKILL.md",
+      "computedHash": "259d55c957e376e5a6b48caaab0b29684fe144af72688b9b22ba314e1d126d42"
+    },
+    "capturing-preview-screenshots-in-ci": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/preview/capturing-preview-screenshots-in-ci/SKILL.md",
+      "computedHash": "7f9b3a7a39965141a8fc6a9581487d54dc10a215e9ad92a4e4f98939c7f0365d"
+    },
+    "capturing-screenshots-and-screenrecord": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/capture/capturing-screenshots-and-screenrecord/SKILL.md",
+      "computedHash": "3e58b504c37c01e34ae66fc5b1dce90d02169cbca0372103f6644de8b936a7d3"
+    },
+    "choosing-test-rule-vs-runtest": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/setup/choosing-test-rule-vs-runtest/SKILL.md",
+      "computedHash": "b0dbbfff3a637191f1fb1034a6262e9325b33f2e0121f0eda61ea64d8fd0cdc1"
+    },
+    "choosing-what-to-test": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "fundamentals/concepts/choosing-what-to-test/SKILL.md",
+      "computedHash": "2867ddc26a98f2f5adbbb4dca0f84bfafaebe0c5c42cf57fa008265e247ac379"
+    },
+    "clicking-and-scrolling": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/actions/clicking-and-scrolling/SKILL.md",
+      "computedHash": "c34a80073f98ff973fea25c8ef250dbe49f933de70f8859f990f6e6d49244d9f"
+    },
+    "composing-semantics-matchers": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/finders/composing-semantics-matchers/SKILL.md",
+      "computedHash": "1c93052f10272ee2cb0fdc49c110c2cd23b5250fe1dcf5be1ddc9890c84c3aad"
+    },
+    "configuring-junit4-on-android": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/runner/configuring-junit4-on-android/SKILL.md",
+      "computedHash": "9c0f9c2c18bfa5d1e5cc31133318178b7885859f924e95c556dc5f40ec67124b"
+    },
+    "configuring-test-dependencies": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/setup/configuring-test-dependencies/SKILL.md",
+      "computedHash": "c65fa4e35e3a0d10f01c8c4eddc39a50b7058c5a735db252e814ae3a731130cf"
+    },
+    "connecting-over-wifi": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/devices/connecting-over-wifi/SKILL.md",
+      "computedHash": "668a9011d997412883adff2caab39f8a8fb37f6465bd20643135a0fa069c884d"
+    },
+    "connecting-to-devices": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/devices/connecting-to-devices/SKILL.md",
+      "computedHash": "b849cfb56f5238a112e2d34691261f47b2966bc2c8dd1f806d7bf32061514130"
+    },
+    "controlling-the-test-clock": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/synchronization/controlling-the-test-clock/SKILL.md",
+      "computedHash": "1172fd42fb7ce234d2d3ed31e49d16c887b41e8d020cba37e6147eb62d59a7ea"
+    },
+    "cross-app-tests-with-uiautomator": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/uiautomator/cross-app-tests-with-uiautomator/SKILL.md",
+      "computedHash": "135973249d5480e522293ed96cd9f94b1981fd61b79cc55193195479e36242fc"
+    },
+    "developing-with-compose-previews": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/preview/developing-with-compose-previews/SKILL.md",
+      "computedHash": "af94bfb9ad1dfc2727f3740d2c7ae348883a15e2ae2073e1442ab30dda9c5e47"
+    },
+    "enabling-accessibility-checks": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/debug/enabling-accessibility-checks/SKILL.md",
+      "computedHash": "0a12b24506de15a598a5418120f54aede231d5585f58f2b892dd1ea30cdbe1e1"
+    },
+    "entering-text": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/actions/entering-text/SKILL.md",
+      "computedHash": "079fdf068d13b68298cde2163861348549b3d41a165fcac0143e26f0e6f665bd"
+    },
+    "extracting-logs-with-logcat": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/observability/extracting-logs-with-logcat/SKILL.md",
+      "computedHash": "d98ded5f566e8801d7abbca6a00e328a38a143b1b617bd3a4db73e7c320523b4"
+    },
+    "extracting-test-artifacts": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/transfer/extracting-test-artifacts/SKILL.md",
+      "computedHash": "c255edeadcb60674d0c71f1ac679fe8cdcc040e365db632ec027193427b2e464"
+    },
+    "finding-nodes-by-tag-text-content": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/finders/finding-nodes-by-tag-text-content/SKILL.md",
+      "computedHash": "5197becbc1de1a9e71ef5fe56c8f6df36928e614d990031210d672417a6b682a"
+    },
+    "injecting-input-and-state": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/control/injecting-input-and-state/SKILL.md",
+      "computedHash": "1dd9e54a840882ad93e5d584e80821c4778b1d31948c5d8a953fbd2ad38e1a37"
+    },
+    "injecting-mouse-and-keyboard": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/actions/injecting-mouse-and-keyboard/SKILL.md",
+      "computedHash": "756e1b358b9054b566933174185abe64d343cf1c4c558de08cb01dcc0c4764ac"
+    },
+    "injecting-touch-gestures": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/actions/injecting-touch-gestures/SKILL.md",
+      "computedHash": "aa7a9ac38edca0479a0f798a940340945478996bc0167cdafb67870da6fc46fa"
+    },
+    "installing-and-managing-apps": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/apps/installing-and-managing-apps/SKILL.md",
+      "computedHash": "fdb984720727ef044be029ac02c77795db19af09be63de5d9596161d3294487c"
+    },
+    "launching-activities-with-activityscenario": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/scenarios/launching-activities-with-activityscenario/SKILL.md",
+      "computedHash": "585ecf7adca997422d165d9bbc94f2ef24789a8118a53f3071a0b32a77a8e4d0"
+    },
+    "launching-fragments-with-fragmentscenario": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/scenarios/launching-fragments-with-fragmentscenario/SKILL.md",
+      "computedHash": "923da31e733965db5a9f49355efaffcb3535054c759f56e9cda25884e871b475"
+    },
+    "material-3-expressive": {
+      "source": "albermonte/android-skills",
+      "sourceType": "github",
+      "skillPath": "skills/material-3-expressive/SKILL.md",
+      "computedHash": "c9e579c370d25d00f0337ec168ee98ef7496e4d2d7da23716a23c510eddce3cc"
+    },
+    "migrating-from-android-test-classes": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "platform/legacy/migrating-from-android-test-classes/SKILL.md",
+      "computedHash": "b4af51276ea973bf84791f27b17e9133a69e3628498af7a5d1e150f90e18fc34"
+    },
+    "mocking-with-mockito": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/mocking/mocking-with-mockito/SKILL.md",
+      "computedHash": "86a4da611c2f98dcfb206be90eb71f895f6855ac281563e5f7a59b7baacaad74"
+    },
+    "mocking-with-mockk": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/mocking/mocking-with-mockk/SKILL.md",
+      "computedHash": "127c0ee22dea5537d7f1eb42f7a47e573d7f2cb805bd6a2789596864f3cbe642"
+    },
+    "organizing-test-source-sets": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "fundamentals/strategies/organizing-test-source-sets/SKILL.md",
+      "computedHash": "b7b19c0cabf13f896bfa7991d25106da29ebcbc03b359f60080b586cada7463a"
+    },
+    "picking-test-doubles": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "fundamentals/doubles/picking-test-doubles/SKILL.md",
+      "computedHash": "fbf123c19bbdf30b51ef3d9915cfe27ee5143bc62a0b4b98327687e290001dac"
+    },
+    "printing-the-semantics-tree": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/debug/printing-the-semantics-tree/SKILL.md",
+      "computedHash": "a8ce1966945f80b9a92490f2a306b585a173092ea888336dcbb3fee709489029"
+    },
+    "running-instrumented-tests-via-adb": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/tests/running-instrumented-tests-via-adb/SKILL.md",
+      "computedHash": "fa76d6d2ef7f03d1c115c33a879b67d90777523bc8da35068ae5f194b7633a35"
+    },
+    "running-instrumented-tests-with-androidjunit4": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/runner/running-instrumented-tests-with-androidjunit4/SKILL.md",
+      "computedHash": "929753aad8fe46aea05786fa5b59f8597b2c8f3e6e15fecaa200d62d3bd41b03"
+    },
+    "running-tests-on-gradle-managed-devices": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/managed-devices/running-tests-on-gradle-managed-devices/SKILL.md",
+      "computedHash": "8f966f6b7aebef826df13dda9b1e80b60aa766be48be67b062b9b4f7e3a38da5"
+    },
+    "scripting-adb-for-ci": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/automation/scripting-adb-for-ci/SKILL.md",
+      "computedHash": "4ffe9ed01c8f92841c63a6429bfd87adb9b958c949b2cb8ea6d60155159aa58c"
+    },
+    "setting-up-host-vs-device-tests": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/setup/setting-up-host-vs-device-tests/SKILL.md",
+      "computedHash": "702fd7b269587cecb77950a0a691efe647610894cf11838984ad39c4b47cc25c"
+    },
+    "structuring-a-compose-test": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/patterns/structuring-a-compose-test/SKILL.md",
+      "computedHash": "d16868b6c241a38d40bdffe2c1f3cd2fa0e00da684c2479c45231d208625dabb"
+    },
+    "synchronizing-with-idle": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/synchronization/synchronizing-with-idle/SKILL.md",
+      "computedHash": "1bd6a5df4abe214e7a74cdc998a2d9d4fc0975fca77e714b3f6db7a20cc3ffab"
+    },
+    "testing-animations-deterministically": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/synchronization/testing-animations-deterministically/SKILL.md",
+      "computedHash": "c56bbf236a45bff1ef735905097d47c6d67cca9df073cdf416ffc1bb71f67915"
+    },
+    "testing-coroutines-with-runtest": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/coroutines/testing-coroutines-with-runtest/SKILL.md",
+      "computedHash": "0c9b6c9f5cdefcdbea78b5a1ea2b0aa1884fe744046d630b989c55b6b7fba469"
+    },
+    "testing-flows-with-turbine": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/coroutines/testing-flows-with-turbine/SKILL.md",
+      "computedHash": "ab8951b851bb195ed6bd4bcba5ad209d28ef865a34fed72d3a92480a0ee1b46b"
+    },
+    "testing-lazy-lists": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/patterns/testing-lazy-lists/SKILL.md",
+      "computedHash": "b9034f8d929770fd8943221b633b0faecda9a06ea0da9173f4fc7f264fcb2cf1"
+    },
+    "testing-state-restoration": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/patterns/testing-state-restoration/SKILL.md",
+      "computedHash": "178fcd74be9cf22f20cf6eb9f57fae4c9024e7ebc2e0e696f705429e854e966c"
+    },
+    "testing-with-espresso-interop": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/interop/testing-with-espresso-interop/SKILL.md",
+      "computedHash": "ca320f0cce6c08b2ef0813c20706fa8fa1bc1603dd27218d7489919129370833"
+    },
+    "traversing-the-semantics-tree": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/finders/traversing-the-semantics-tree/SKILL.md",
+      "computedHash": "9e7fb18a87f43426a9aa5eb6413b3e1a255857eff5ce076de1ade628e9f9789e"
+    },
+    "understanding-adb-architecture": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "adb/architecture/understanding-adb-architecture/SKILL.md",
+      "computedHash": "bd04db0f11fcab5f833cfa8e9016bef0c62aa554bcdcb409878c1fc84a3f7a97"
+    },
+    "understanding-the-testing-pyramid": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "fundamentals/concepts/understanding-the-testing-pyramid/SKILL.md",
+      "computedHash": "d227940c306437f983cdd831c1b12eccaa614e6c79e674633dd01799de34c5b4"
+    },
+    "using-robolectric-correctly": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "jvm-tests/robolectric/using-robolectric-correctly/SKILL.md",
+      "computedHash": "b1460aece26a14c59b5203b29ca809552f614ec634b968eb4e05786a1dd32675"
+    },
+    "validating-compose-stability": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "compose/stability/validating-compose-stability/SKILL.md",
+      "computedHash": "76dbd83645f717dc22105120b5e03a7997597ecb1e83e6505c04d62e34773535"
+    },
+    "writing-espresso-tests": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "instrumentation/espresso/writing-espresso-tests/SKILL.md",
+      "computedHash": "479896ca0b3d1a114b1bfbeec456efeb4a917f545023ea9d21ab5bf7d6713798"
+    },
+    "writing-tests-with-kotlin-test": {
+      "source": "skydoves/android-testing-skills",
+      "sourceType": "github",
+      "skillPath": "kotlin/kotlin-test/writing-tests-with-kotlin-test/SKILL.md",
+      "computedHash": "ad750f15c325255b0b116932b252f466fedba13ebd5f643a8dc85e56c3839217"
+    }
+  }
+}

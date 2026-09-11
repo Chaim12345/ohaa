@@ -15,4 +15,5 @@
 .cxx
 local.properties
 .env
-debug.keystore
+# debug.keystore IS committed on purpose: it signs CI debug APKs with a stable key
+# so sideloaded builds can upgrade over each other (android/androiddebugkey creds).

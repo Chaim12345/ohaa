@@ -1,23 +1,28 @@
-name: Build Android APK
+name: Build & Test Android
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "redesign/canvas-v2" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
-jobs:
-  build:
-    name: Build Debug APK
-    runs-on: ubuntu-latest
+# One run per branch at a time — superseded pushes are cancelled immediately
+# instead of queueing (and burning billable minutes) behind each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -26,16 +31,97 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make build script executable
-        run: chmod +x ./build_apk.sh
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Build APK with script
-        run: ./build_apk.sh --no-daemon
+  build-and-smoke:
+    name: Build APK + launch smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM (hardware-accelerated emulator)
+        # Without this the runner user can't touch /dev/kvm and the emulator
+        # falls back to pure software emulation — boot goes from ~90s to ~9min.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      - name: Build APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Smoke test — launch app on emulator and capture crash logs
+        # Boots a headless emulator, installs the freshly built APK, starts the
+        # launcher activity, then verifies the process survived. If the process
+        # died the full crash stack trace is written to the job summary and the
+        # job fails, so "APK crashes on open" is caught before release.
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          # NOTE: this action executes the `script:` line-by-line, so multi-line
+          # if/then blocks break ("Syntax error: end of file unexpected"). All
+          # logic lives in a single script file invoked in one line.
+          script: bash .github/scripts/smoke_test.sh
+
+      - name: Upload emulator logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        # Convenience only — the crash trace is echoed to the step log, so a
+        # storage-quota failure here must not mask the diagnosis.
+        continue-on-error: true
+        with:
+          name: emulator-logcat
+          path: |
+            full-logcat.txt
+            crash-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload APK to temp.sh
+        # Convenience mirror so the APK is grabbable without GitHub auth (also a
+        # fallback when the artifact upload below hits the storage quota).
+        # The APK is zipped first: temp.sh serves GETs as an HTML download page, and
+        # phone browsers that save that page instead of the binary produce a corrupt
+        # APK ("There was a problem parsing the package"). A .zip wrapper survives that.
+        # Note: this publishes the debug APK to a public third-party host.
+        continue-on-error: true
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ ! -f "$APK_PATH" ]; then
+            echo "APK file not found for temp.sh upload."
+            exit 1
+          fi
+          ZIP_PATH="${APK_PATH%.apk}.zip"
+          zip -q -j "$ZIP_PATH" "$APK_PATH"
+          URL=$(curl -sS --retry 3 -F "file=@${ZIP_PATH}" https://temp.sh/upload | tr -d '\r\n')
+          if [ -z "$URL" ]; then
+            echo "temp.sh upload returned no URL."
+            exit 1
+          fi
+          echo "Download (temp.sh, expires after a few days): $URL"
+          echo "Unzip before installing — the .apk is inside the .zip."
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        # The upload is a convenience, not the CI signal — don't fail the run when the
+        # account's artifact storage quota is exhausted ("recalculated every 6-12 hours").
+        continue-on-error: true
         with:
-          name: openhands-android-debug-apk
+          name: openhands-canvas-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
