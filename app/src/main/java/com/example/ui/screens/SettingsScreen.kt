@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -64,6 +65,7 @@ import com.example.ui.theme.CanvasBorder
 import com.example.ui.theme.CanvasPrimary
 import com.example.ui.theme.CanvasPrimaryDeep
 import com.example.ui.theme.CanvasSuccess
+import com.example.util.formatUsd
 
 @Composable
 fun SettingsScreen(
@@ -103,6 +105,7 @@ fun SettingsScreen(
     var deletingProfile by remember { mutableStateOf<String?>(null) }
     var deletingSecret by remember { mutableStateOf<String?>(null) }
     var showAddSecretDialog by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
 
     Column(
         Modifier
@@ -186,6 +189,15 @@ fun SettingsScreen(
             }
         }
 
+        // Help link sits below the primary actions so it never pushes the
+        // Save / Test buttons out of view on small screens.
+        TextButton(
+            onClick = { uriHandler.openUri("https://app.all-hands.dev/settings/api-keys") },
+            modifier = Modifier.testTag("btn_api_key_help")
+        ) {
+            Text("Where do I find my API key?", fontSize = 12.sp)
+        }
+
         if (!isDemoMode) {
             TextButton(
                 onClick = onClearApiKey,
@@ -238,7 +250,7 @@ fun SettingsScreen(
         credits?.let { creditsValue ->
             Spacer(Modifier.height(8.dp))
             Text(
-                "Cloud credits: $${"%.2f".format(creditsValue)}",
+                "Cloud credits: ${formatUsd(creditsValue)}",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

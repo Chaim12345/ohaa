@@ -85,11 +85,14 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               modifier = Modifier.testTag("bottom_nav_bar")
           ) {
             listOf(
-                Triple(AppTab.DASHBOARD, Icons.Default.Dashboard, "Dashboard"),
-                Triple(AppTab.CONVERSATIONS, Icons.AutoMirrored.Filled.FormatListBulleted, "Tasks"),
-                Triple(AppTab.NEW_TASK, Icons.Default.AddCircle, "New Task"),
-                Triple(AppTab.SETTINGS, Icons.Default.Cloud, "Cloud API")
-            ).forEach { (tab, icon, title) ->
+                AppTab.DASHBOARD to Icons.Default.Dashboard,
+                AppTab.CONVERSATIONS to Icons.AutoMirrored.Filled.FormatListBulleted,
+                AppTab.NEW_TASK to Icons.Default.AddCircle,
+                AppTab.SETTINGS to Icons.Default.Cloud
+            ).forEach { (tab, icon) ->
+              // Tab labels come from the enum so the nav bar and the screens
+              // cannot drift apart.
+              val title = tab.label
               val selected = uiState.currentTab == tab
               NavigationBarItem(
                   selected = selected,
@@ -133,7 +136,10 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
             onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
             onModelChanged = { model -> viewModel.setModel(model) },
             onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) },
-            onResetProfile = { viewModel.resetConversationProfile() }
+            onResetProfile = { viewModel.resetConversationProfile() },
+            fileDiffs = uiState.fileDiffs,
+            loadingDiffPath = uiState.loadingDiffPath,
+            onLoadFileDiff = { path -> viewModel.loadFileDiff(path) }
         )
       } else {
         when (uiState.currentTab) {
@@ -148,7 +154,9 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               onSelectConversation = { id -> viewModel.openDetail(id) },
               onSelectTemplate = { template -> viewModel.applyTemplate(template) },
               onRefresh = { viewModel.refreshConversations() },
-              onOpenSettings = { viewModel.setTab(AppTab.SETTINGS) }
+              onOpenSettings = { viewModel.setTab(AppTab.SETTINGS) },
+              suggestedTasks = uiState.suggestedTasks,
+              onSelectSuggestedTask = { task -> viewModel.applySuggestedTask(task) }
           )
           AppTab.CONVERSATIONS -> ConversationsScreen(
               conversations = conversations,
@@ -159,7 +167,9 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               onStatusFilterChanged = { viewModel.setStatusFilter(it) },
               onRefresh = { viewModel.refreshConversations(showFeedback = false) },
               onSelectConversation = { id -> viewModel.openDetail(id) },
-              onStartNewTask = { viewModel.setTab(AppTab.NEW_TASK) }
+              onStartNewTask = { viewModel.setTab(AppTab.NEW_TASK) },
+              onRenameConversation = { id, title -> viewModel.renameConversation(id, title) },
+              onDeleteConversation = { id -> viewModel.deleteConversation(id) }
           )
           AppTab.NEW_TASK -> NewTaskScreen(
               promptText = uiState.newTaskPrompt,

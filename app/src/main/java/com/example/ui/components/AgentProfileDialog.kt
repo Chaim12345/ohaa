@@ -48,7 +48,12 @@ fun AgentProfileDialog(
     onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
     onAcpCommandChanged: (String) -> Unit,
-    title: String = "Agent & LLM"
+    title: String = "Agent & LLM",
+    /**
+     * Optional "Reset to default" action. Only conversations carry a per-
+     * conversation override, so callers outside a conversation leave this null.
+     */
+    onReset: (() -> Unit)? = null
 ) {
     var modelDraft by remember(profile) { mutableStateOf(profile.model) }
     var acpDraft by remember(profile) { mutableStateOf(profile.acpCommand) }
@@ -60,18 +65,29 @@ fun AgentProfileDialog(
             modelDraft = it
         }, { acpDraft = it }, onAgentKindChanged, onModelChanged, onAcpCommandChanged) },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    if (profile.kind == AgentKind.OPENHANDS && modelDraft != profile.model) {
-                        onModelChanged(modelDraft)
-                    }
-                    if (profile.kind == AgentKind.ACP && acpDraft != profile.acpCommand) {
-                        onAcpCommandChanged(acpDraft)
-                    }
-                    onDismiss()
-                },
-                modifier = Modifier.testTag("btn_profile_done")
-            ) { Text("Done") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                onReset?.let { reset ->
+                    TextButton(
+                        onClick = {
+                            reset()
+                            onDismiss()
+                        },
+                        modifier = Modifier.testTag("btn_profile_reset")
+                    ) { Text("Reset to default") }
+                }
+                TextButton(
+                    onClick = {
+                        if (profile.kind == AgentKind.OPENHANDS && modelDraft != profile.model) {
+                            onModelChanged(modelDraft)
+                        }
+                        if (profile.kind == AgentKind.ACP && acpDraft != profile.acpCommand) {
+                            onAcpCommandChanged(acpDraft)
+                        }
+                        onDismiss()
+                    },
+                    modifier = Modifier.testTag("btn_profile_done")
+                ) { Text("Done") }
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

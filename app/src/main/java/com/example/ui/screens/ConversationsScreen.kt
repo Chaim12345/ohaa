@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,8 +34,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -57,8 +63,13 @@ fun ConversationsScreen(
     onStatusFilterChanged: (ConversationUiStatus?) -> Unit,
     onRefresh: () -> Unit,
     onSelectConversation: (String) -> Unit,
-    onStartNewTask: () -> Unit
+    onStartNewTask: () -> Unit,
+    onRenameConversation: (String, String) -> Unit = { _, _ -> },
+    onDeleteConversation: (String) -> Unit = {}
 ) {
+    var renamingConversation by remember { mutableStateOf<OpenHandsConversation?>(null) }
+    var deletingConversation by remember { mutableStateOf<OpenHandsConversation?>(null) }
+    val hasActiveFilters = searchQuery.isNotBlank() || statusFilter != null
     val filtered = conversations
         .filter { statusFilter == null || it.uiStatus == statusFilter }
         .filter { q ->
@@ -136,6 +147,31 @@ fun ConversationsScreen(
             }
         }
 
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(
+                "${filtered.size} of ${conversations.size} tasks",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            if (hasActiveFilters) {
+                TextButton(
+                    onClick = {
+                        onSearchChanged("")
+                        onStatusFilterChanged(null)
+                    },
+                    modifier = Modifier.testTag("btn_clear_filters")
+                ) {
+                    Text("Clear filters", fontSize = 12.sp)
+                }
+            }
+        }
+
         // Native pull-to-refresh gesture over the list area (filters stay fixed).
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -167,9 +203,21 @@ fun ConversationsScreen(
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = onStartNewTask) {
-                        Icon(Icons.Default.Add, null)
-                        Text("  Launch your first task")
+                    if (hasActiveFilters) {
+                        TextButton(
+                            onClick = {
+                                onSearchChanged("")
+                                onStatusFilterChanged(null)
+                            },
+                            modifier = Modifier.testTag("btn_clear_filters_empty")
+                        ) {
+                            Text("Clear filters")
+                        }
+                    } else {
+                        Button(onClick = onStartNewTask) {
+                            Icon(Icons.Default.Add, null)
+                            Text("  Launch your first task")
+                        }
                     }
                 }
             } else {
@@ -183,10 +231,94 @@ fun ConversationsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filtered, key = { it.id }) { conv ->
-                        ConversationRow(conv, onClick = { onSelectConversation(conv.id) })
+                        ConversationRow(
+                            conversation = conv,
+                            onClick = { onSelectConversation(conv.id) },
+                            onRename = { renamingConversation = conv },
+                            onDelete = { deletingConversation = conv }
+                        )
                     }
                 }
             }
         }
     }
+
+    renamingConversation?.let { conv ->
+        RenameConversationDialog(
+            currentTitle = conv.title,
+            onDismiss = { renamingConversation = null },
+            onConfirm = { newTitle ->
+                renamingConversation = null
+                onRenameConversation(conv.id, newTitle)
+            }
+        )
+    }
+
+    deletingConversation?.let { conv ->
+        AlertDialog(
+            onDismissRequest = { deletingConversation = null },
+            title = { Text("Delete conversation?") },
+            text = {
+                Text(
+                    "'${conv.title}' and its cached transcript will be removed " +
+                        "from this device and from OpenHands Cloud."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingConversation = null
+                        onDeleteConversation(conv.id)
+                    },
+                    modifier = Modifier.testTag("btn_confirm_delete_conversation")
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingConversation = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun RenameConversationDialog(
+    currentTitle: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var title by remember(currentTitle) { mutableStateOf(currentTitle) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename conversation") },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Title") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = CanvasPrimary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("field_rename_conversation")
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(title.trim()) },
+                enabled = title.isNotBlank() && title.trim() != currentTitle,
+                modifier = Modifier.testTag("btn_confirm_rename_conversation")
+            ) {
+                Text("Rename")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

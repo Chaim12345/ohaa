@@ -182,7 +182,12 @@ class OpenHandsRepository(
             }
         }
 
-    /** Renames a conversation (PATCH metadata). */
+    /**
+     * Renames a conversation (PATCH metadata). The response is merged onto the
+     * cached row so fields the PATCH payload omits (last message, original
+     * timestamps) survive, and so a response without `id` can never orphan the
+     * conversation under a freshly generated id.
+     */
     suspend fun renameConversation(conversationId: String, title: String): Result<AppConversationDto> =
         withContext(Dispatchers.IO) {
             call("rename conversation") {
@@ -191,7 +196,18 @@ class OpenHandsRepository(
                     com.example.data.model.UpdateConversationRequest(title = title)
                 )
             }.onSuccess { dto ->
-                conversationDao.insertConversation(dto.toEntity(now()))
+                val existing = conversationDao.getConversationById(conversationId).first()
+                val incoming = dto.toEntity(now())
+                conversationDao.insertConversation(
+                    incoming.copy(
+                        id = conversationId,
+                        title = title,
+                        createdAt = existing?.createdAt ?: incoming.createdAt,
+                        updatedAt = maxOf(existing?.updatedAt ?: incoming.updatedAt, incoming.updatedAt),
+                        lastMessage = existing?.lastMessage,
+                        repository = incoming.repository ?: existing?.repository
+                    )
+                )
             }
         }
 

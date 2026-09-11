@@ -18,6 +18,7 @@ import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
 import com.example.data.model.SecretDto
 import com.example.data.model.StartTaskDto
+import com.example.data.model.SuggestedTaskDto
 import com.example.data.model.UserInfoDto
 import com.example.data.repository.CloudError
 import com.example.data.repository.OpenHandsRepository
@@ -34,20 +35,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Bottom-navigation destinations. The label is the single source of truth for
+ * the navigation bar, so tab names cannot drift between here and MainActivity.
+ */
 enum class AppTab(val label: String) {
     DASHBOARD("Dashboard"),
-    CONVERSATIONS("Conversations"),
+    CONVERSATIONS("Tasks"),
     NEW_TASK("New Task"),
-    SETTINGS("Settings")
-}
-
-/** A typed route stack replaces the old "tab + selected id" tangle. */
-sealed class Route {
-    data object Dashboard : Route()
-    data object Conversations : Route()
-    data object NewTask : Route()
-    data object Settings : Route()
-    data class ConversationDetail(val conversationId: String) : Route()
+    SETTINGS("Cloud API")
 }
 
 data class OpenHandsUiState(
@@ -89,7 +85,15 @@ data class OpenHandsUiState(
     val selectedBranch: String = "",
     val isSearchingRepos: Boolean = false,
     val gitDiff: GitDiffDto? = null,
-    val isGitLoading: Boolean = false
+    val isGitLoading: Boolean = false,
+    // Unified diff per changed file, fetched on demand from the runtime
+    // git/diff endpoint and cached while the conversation stays open.
+    val fileDiffs: Map<String, String> = emptyMap(),
+    val loadingDiffPath: String? = null,
+    // Provider-suggested next tasks (failing checks, open issues) shown on the
+    // dashboard; empty in demo mode or when no git provider is connected.
+    val suggestedTasks: List<SuggestedTaskDto> = emptyList(),
+    val isLoadingSuggested: Boolean = false
 )
 
 enum class LaunchStage(val label: String) {
@@ -188,7 +192,9 @@ class OpenHandsViewModel(application: Application) :
         _detailEvents.value = emptyList()
         _uiState.value = _uiState.value.copy(
             detailConversationId = null,
-            activeProfile = profileStore.defaultProfile()
+            activeProfile = profileStore.defaultProfile(),
+            fileDiffs = emptyMap(),
+            loadingDiffPath = null
         )
     }
 
@@ -213,6 +219,7 @@ class OpenHandsViewModel(application: Application) :
                         offlineMessage = null,
                         notification = if (showFeedback) "Synced with OpenHands Cloud" else null
                     )
+                    loadSuggestedTasks()
                 }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(
@@ -238,6 +245,59 @@ class OpenHandsViewModel(application: Application) :
                 .onSuccess {
                     if (_uiState.value.detailConversationId == conversationId) closeDetail()
                     _uiState.value = _uiState.value.copy(notification = "Conversation deleted")
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    /**
+     * Loads provider-suggested next tasks (failing checks, open issues) for the
+     * dashboard. Failure is intentionally silent: suggestions are a bonus
+     * surface, so an unconnected provider should not raise a notification.
+     */
+    fun loadSuggestedTasks() {
+        if (!repository.isConfigured() || _uiState.value.isLoadingSuggested) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingSuggested = true)
+            repository.suggestedTasks()
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(
+                        suggestedTasks = tasks,
+                        isLoadingSuggested = false
+                    )
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        suggestedTasks = emptyList(),
+                        isLoadingSuggested = false
+                    )
+                }
+        }
+    }
+
+    /** Prefills the New Task form from a provider suggestion. */
+    fun applySuggestedTask(task: SuggestedTaskDto) {
+        _uiState.value = _uiState.value.copy(
+            newTaskPrompt = task.title,
+            newTaskRepo = task.repo,
+            currentTab = AppTab.NEW_TASK,
+            notification = "Suggested task loaded into New Task"
+        )
+    }
+
+    /** Renames a conversation (PATCH metadata) and refreshes the local row. */
+    fun renameConversation(conversationId: String, title: String) {
+        val clean = title.trim()
+        if (clean.isEmpty()) {
+            _uiState.value = _uiState.value.copy(notification = "Conversation name cannot be empty")
+            return
+        }
+        viewModelScope.launch {
+            repository.renameConversation(conversationId, clean)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(notification = "Conversation renamed")
                 }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
@@ -442,13 +502,47 @@ class OpenHandsViewModel(application: Application) :
         val id = _uiState.value.detailConversationId ?: return
         if (_uiState.value.isGitLoading) return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isGitLoading = true)
+            _uiState.value = _uiState.value.copy(
+                isGitLoading = true,
+                // A fresh change list invalidates any cached per-file diffs.
+                fileDiffs = emptyMap(),
+                loadingDiffPath = null
+            )
             repository.gitChanges(id)
                 .onSuccess { diff -> _uiState.value = _uiState.value.copy(gitDiff = diff, isGitLoading = false) }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(
                         isGitLoading = false,
                         notification = "Git: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /**
+     * Lazily fetches the unified diff for one changed file. The git/changes
+     * endpoint only lists files, so each diff needs its own call; results are
+     * cached so re-expanding a file does not re-hit the network.
+     */
+    fun loadFileDiff(filePath: String) {
+        val id = _uiState.value.detailConversationId ?: return
+        if (filePath.isBlank()) return
+        if (_uiState.value.fileDiffs.containsKey(filePath)) return
+        if (_uiState.value.loadingDiffPath != null) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loadingDiffPath = filePath)
+            repository.gitDiff(id, filePath)
+                .onSuccess { diff ->
+                    _uiState.value = _uiState.value.copy(
+                        loadingDiffPath = null,
+                        fileDiffs = _uiState.value.fileDiffs +
+                            (filePath to (diff.diffText ?: "No textual diff available for this file."))
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        loadingDiffPath = null,
+                        notification = "Diff: ${err.toUserMessage()}"
                     )
                 }
         }
@@ -563,6 +657,7 @@ class OpenHandsViewModel(application: Application) :
             healthOk = null,
             healthMessage = null,
             credits = null,
+            suggestedTasks = emptyList(),
             notification = "API key cleared — demo mode enabled"
         )
     }
@@ -586,6 +681,7 @@ class OpenHandsViewModel(application: Application) :
                         offlineMessage = null
                     )
                     refreshCloudSettings()
+                    loadSuggestedTasks()
                 }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(

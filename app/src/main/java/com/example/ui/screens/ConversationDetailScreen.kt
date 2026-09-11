@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +66,8 @@ import com.example.ui.components.StatusChip
 import com.example.ui.theme.CanvasBorder
 import com.example.ui.theme.CanvasPrimary
 import com.example.ui.theme.CanvasPrimaryDeep
+import com.example.util.formatUsd
+import com.example.util.relativeTime
 
 @Composable
 fun ConversationDetailScreen(
@@ -82,7 +86,11 @@ fun ConversationDetailScreen(
     onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
     onAcpCommandChanged: (String) -> Unit,
-    onResetProfile: () -> Unit
+    onResetProfile: () -> Unit,
+    // Per-file unified diffs, loaded on demand when a changed file is expanded.
+    fileDiffs: Map<String, String> = emptyMap(),
+    loadingDiffPath: String? = null,
+    onLoadFileDiff: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var composerText by remember { mutableStateOf("") }
@@ -144,6 +152,20 @@ fun ConversationDetailScreen(
                         )
                     }
                 }
+                conversation?.let { conv ->
+                    val meta = buildList {
+                        if (conv.createdAt > 0L) add("Started ${relativeTime(conv.createdAt)}")
+                        if (conv.cost > 0.0) add(formatUsd(conv.cost))
+                    }
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            meta.joinToString(" · "),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("conversation_meta")
+                        )
+                    }
+                }
             }
             AgentProfileBadge(profile = activeProfile, onOpen = { showProfileDialog = true })
             IconButton(onClick = onRefresh) {
@@ -191,7 +213,12 @@ fun ConversationDetailScreen(
             }
             gitDiff?.files?.takeIf { it.isNotEmpty() }?.let { files ->
                 item {
-                    GitChangesCard(files, gitDiff.diffText)
+                    GitChangesCard(
+                        files = files,
+                        fileDiffs = fileDiffs,
+                        loadingPath = loadingDiffPath,
+                        onRequestDiff = onLoadFileDiff
+                    )
                 }
             }
             items(events, key = { it.id }) { event ->
@@ -304,17 +331,9 @@ fun ConversationDetailScreen(
             onAgentKindChanged = onAgentKindChanged,
             onModelChanged = onModelChanged,
             onAcpCommandChanged = onAcpCommandChanged,
-            title = "Agent & LLM · this conversation"
+            title = "Agent & LLM · this conversation",
+            onReset = onResetProfile
         )
-        TextButton(
-            onClick = {
-                showProfileDialog = false
-                onResetProfile()
-            },
-            modifier = Modifier.testTag("btn_reset_profile")
-        ) {
-            Text("Reset to default")
-        }
     }
 }
 
@@ -336,10 +355,19 @@ private fun DemoBanner() {
     }
 }
 
-/** Compact list of working-tree changes with an expandable unified diff. */
+/**
+ * Compact list of working-tree changes. Each file row is tappable: expanding it
+ * lazily fetches that file's unified diff from the runtime and shows it inline,
+ * so a large change list never blocks on downloading every diff up front.
+ */
 @Composable
-private fun GitChangesCard(files: List<GitChangeDto>, diff: String?) {
-    var expanded by remember { mutableStateOf(false) }
+private fun GitChangesCard(
+    files: List<GitChangeDto>,
+    fileDiffs: Map<String, String>,
+    loadingPath: String?,
+    onRequestDiff: (String) -> Unit
+) {
+    var expandedPath by remember { mutableStateOf<String?>(null) }
 
     Card(
         colors = CardDefaults.cardColors(
@@ -364,54 +392,93 @@ private fun GitChangesCard(files: List<GitChangeDto>, diff: String?) {
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "tap a file for its diff",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(Modifier.height(6.dp))
             files.forEach { change ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                ) {
-                    Text(
-                        change.displayName,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        change.status.uppercase(),
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "+${change.insertions} −${change.deletions}",
-                        fontSize = 10.sp,
-                        color = CanvasPrimary
-                    )
-                }
-            }
-            diff?.takeIf { it.isNotBlank() }?.let { d ->
-                Spacer(Modifier.height(4.dp))
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Hide diff" else "View diff")
-                }
-                if (expanded) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                val path = change.displayName
+                val isExpanded = expandedPath == path
+                val diff = fileDiffs[path]
+                val isLoadingThis = loadingPath == path
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                expandedPath = if (isExpanded) null else path
+                                if (!isExpanded && diff == null) onRequestDiff(path)
+                            }
+                            .padding(vertical = 3.dp)
+                            .testTag("git_file_$path")
                     ) {
-                        Text(
-                            d,
-                            fontSize = 10.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            maxLines = 12,
-                            modifier = Modifier.padding(8.dp)
+                        Icon(
+                            if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (isExpanded) "Hide diff" else "Show diff",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp)
                         )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            path,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            change.status.uppercase(),
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "+${change.insertions} −${change.deletions}",
+                            fontSize = 10.sp,
+                            color = CanvasPrimary
+                        )
+                    }
+                    if (isExpanded) {
+                        when {
+                            isLoadingThis -> Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 19.dp, top = 2.dp, bottom = 6.dp)
+                            ) {
+                                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Loading diff…",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            diff != null -> Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 19.dp, top = 2.dp, bottom = 6.dp)
+                            ) {
+                                Text(
+                                    diff,
+                                    fontSize = 10.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .testTag("git_file_diff")
+                                )
+                            }
+                            else -> Unit
+                        }
                     }
                 }
             }
