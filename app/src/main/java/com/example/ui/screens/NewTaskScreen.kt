@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
 import com.example.data.model.BranchDto
-import com.example.data.settings.AgentKind
+import com.example.data.model.SuggestedTaskDto
 import com.example.data.settings.AgentProfile
 import com.example.ui.components.AgentProfileDialog
 import com.example.ui.components.ProfileSummaryCard
@@ -78,11 +79,16 @@ fun NewTaskScreen(
     onSearchRepositories: () -> Unit,
     onSelectRepository: (RepositoryDto) -> Unit,
     onSelectBranch: (String) -> Unit,
-    onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit
+    suggestedTasks: List<SuggestedTaskDto> = emptyList(),
+    isLoadingSuggested: Boolean = false,
+    availableModels: List<String> = emptyList(),
+    onLoadSuggestedTasks: () -> Unit = {},
+    onSelectSuggestedTask: (SuggestedTaskDto) -> Unit = {}
 ) {
     var showProfileDialog by remember { mutableStateOf(false) }
+    // Load suggested tasks the first time this screen is shown.
+    androidx.compose.runtime.LaunchedEffect(Unit) { onLoadSuggestedTasks() }
     Column(
         Modifier
             .fillMaxSize()
@@ -202,6 +208,71 @@ fun NewTaskScreen(
         }
 
         Spacer(Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Suggested from your repos", style = MaterialTheme.typography.titleMedium)
+            if (isLoadingSuggested) {
+                Spacer(Modifier.width(8.dp))
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            }
+        }
+        if (!isLoadingSuggested && suggestedTasks.isEmpty()) {
+            Text(
+                "No failing checks or open issues found on connected repositories.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        } else {
+            suggestedTasks.take(6).forEach { task ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                        .testTag("suggested_task_row")
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 12.dp, end = 6.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                task.title.ifBlank { "Untitled task" },
+                                fontSize = 13.sp,
+                                maxLines = 2
+                            )
+                            Text(
+                                buildString {
+                                    if (task.repo.isNotBlank()) append(task.repo)
+                                    if (task.issueNumber > 0) {
+                                        if (isNotEmpty()) append(" · ")
+                                        append("#")
+                                        append(task.issueNumber)
+                                    }
+                                    task.taskType?.takeIf { it.isNotBlank() }?.let {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(it)
+                                    }
+                                },
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(
+                            onClick = { onSelectSuggestedTask(task) },
+                            modifier = Modifier.testTag("btn_use_suggested_task")
+                        ) {
+                            Text("Use", color = CanvasPrimaryDeep)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
         Text("Quick fill", style = MaterialTheme.typography.titleMedium)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -264,7 +335,7 @@ fun NewTaskScreen(
                     .padding(vertical = 4.dp)
             ) {
                 Text(
-                    "Demo mode is read-only. Add an API key in Settings to launch a live cloud agent.",
+                    "Not connected — add your API key in Settings to launch a live cloud agent.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(12.dp)
@@ -307,10 +378,9 @@ fun NewTaskScreen(
         AgentProfileDialog(
             profile = activeProfile,
             onDismiss = { showProfileDialog = false },
-            onAgentKindChanged = onAgentKindChanged,
             onModelChanged = onModelChanged,
-            onAcpCommandChanged = onAcpCommandChanged,
-            title = "Agent & LLM · new task"
+            title = "Agent & LLM · new task",
+            availableModels = availableModels
         )
     }
 }

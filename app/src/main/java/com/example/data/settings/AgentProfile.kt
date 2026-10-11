@@ -5,67 +5,25 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
-/**
- * Which agent backend drives a conversation.
- *
- * [OPENHANDS] is the default: the standard OpenHands agent that plans and acts
- * by calling an LLM directly (LiteLLM `provider/model` naming).
- *
- * [ACP] is strictly opt-in: the OpenHands SDK `ACPAgent` delegates to an
- * Agent Client Protocol server (Claude Code, Gemini CLI, …) which manages its
- * own LLM and tools — no OpenHands model choice applies in that mode.
- */
-enum class AgentKind(val label: String, val blurb: String) {
-    OPENHANDS(
-        "OpenHands",
-        "Default agent — plans, edits, and runs commands with the selected LLM."
-    ),
-    ACP(
-        "ACP agent",
-        "Delegates to an ACP server (Claude Code, Gemini CLI…) that manages its own LLM."
-    )
-}
+/** LiteLLM-convention default used by OpenHands Cloud (free model). */
+const val DEFAULT_OPENHANDS_MODEL: String = "openhands/deepseek-v4.1-flash"
 
-/** LiteLLM-convention default used by OpenHands Cloud. */
-const val DEFAULT_OPENHANDS_MODEL: String = "openhands/claude-sonnet-4-5-20250929"
-
-/** Command spawned by the SDK to bring up an ACP-compatible server. */
-const val DEFAULT_ACP_COMMAND: String = "npx -y @agentclientprotocol/claude-agent-acp"
-
-/** Models commonly offered on OpenHands Cloud — suggestions, not a hard limit. */
-val SUGGESTED_MODELS: List<String> = listOf(
-    "openhands/claude-sonnet-4-5-20250929",
-    "openhands/gpt-5",
-    "anthropic/claude-opus-4-1-20250805",
-    "openai/gpt-4o",
-    "o3"
-)
+/** The single provider whose models this client offers. */
+const val OPENHANDS_PROVIDER: String = "openhands"
 
 /**
- * The agent + LLM combination the user has selected for a conversation.
- * Always defaults to the plain OpenHands agent; ACP is used only when
- * explicitly chosen by the user.
+ * The LLM the user has selected for a conversation. Always the plain OpenHands
+ * agent; the provider is fixed to [OPENHANDS_PROVIDER] and the catalogue is
+ * filtered to that provider's free, verified models.
  */
 @JsonClass(generateAdapter = true)
 data class AgentProfile(
-    val kind: AgentKind = AgentKind.OPENHANDS,
-    val model: String = DEFAULT_OPENHANDS_MODEL,
-    val acpCommand: String = DEFAULT_ACP_COMMAND
+    val model: String = DEFAULT_OPENHANDS_MODEL
 ) {
-    /** Compact label for badges, e.g. "OpenHands · claude-sonnet-4-5" or "ACP · claude-agent-acp". */
-    fun shortLabel(): String {
-        val tail = when (kind) {
-            AgentKind.OPENHANDS -> model.substringAfterLast('/').ifBlank { model }
-            AgentKind.ACP -> acpCommand.substringAfterLast('/')
-                .removeSuffix("\"").ifBlank { "ACP server" }
-        }
-        return "${kind.label} · $tail"
-    }
+    /** Short model name for badges, e.g. "deepseek-v4.1-flash". */
+    fun shortLabel(): String = model.substringAfterLast('/').ifBlank { model }
 
-    fun isValid(): Boolean = when (kind) {
-        AgentKind.OPENHANDS -> model.isNotBlank() && model.contains('/')
-        AgentKind.ACP -> acpCommand.isNotBlank()
-    }
+    fun isValid(): Boolean = model.isNotBlank()
 }
 
 /**

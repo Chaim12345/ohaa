@@ -22,7 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
@@ -30,6 +30,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +58,6 @@ import com.example.data.model.AgentEvent
 import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
 import com.example.data.model.OpenHandsConversation
-import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
 import com.example.ui.components.AgentProfileBadge
 import com.example.ui.components.AgentProfileDialog
@@ -64,6 +66,7 @@ import com.example.ui.components.StatusChip
 import com.example.ui.theme.CanvasBorder
 import com.example.ui.theme.CanvasPrimary
 import com.example.ui.theme.CanvasPrimaryDeep
+import com.example.ui.viewmodel.SandboxUiState
 
 @Composable
 fun ConversationDetailScreen(
@@ -79,15 +82,31 @@ fun ConversationDetailScreen(
     onSendMessage: (String) -> Unit,
     onDelete: () -> Unit,
     onRefreshGit: () -> Unit,
-    onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit,
-    onResetProfile: () -> Unit
+    onResetProfile: () -> Unit,
+    webBaseUrl: String = "https://app.all-hands.dev",
+    availableModels: List<String> = emptyList(),
+    onRename: (String, String) -> Unit = { _, _ -> },
+    sandboxStatus: SandboxUiState = SandboxUiState(),
+    onPauseSandbox: (String) -> Unit = {},
+    onResumeSandbox: (String) -> Unit = {},
+    onDeleteSandbox: (String) -> Unit = {},
+    files: List<String> = emptyList(),
+    isFilesLoading: Boolean = false,
+    fileContents: Map<String, String> = emptyMap(),
+    onLoadFiles: (String) -> Unit = {},
+    onReadFile: (String) -> Unit = {},
+    skills: List<String> = emptyList(),
+    onLoadSkills: () -> Unit = {},
+    onExportTrajectory: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var composerText by remember { mutableStateOf("") }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showSandboxMenu by remember { mutableStateOf(false) }
+    var showFilesSheet by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     // Keep the newest event visible as the transcript grows, but never yank
@@ -156,6 +175,82 @@ fun ConversationDetailScreen(
             ) {
                 Icon(Icons.Default.Sync, contentDescription = "Pull git changes")
             }
+            Box {
+                IconButton(
+                    onClick = { showSandboxMenu = true },
+                    modifier = Modifier.testTag("btn_sandbox_menu")
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                }
+                DropdownMenu(
+                    expanded = showSandboxMenu,
+                    onDismissRequest = { showSandboxMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename conversation") },
+                        onClick = {
+                            showSandboxMenu = false
+                            showRenameDialog = true
+                        },
+                        modifier = Modifier.testTag("menu_rename")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Workspace files") },
+                        onClick = {
+                            showSandboxMenu = false
+                            showFilesSheet = true
+                            conversation?.id?.let(onLoadFiles)
+                        },
+                        modifier = Modifier.testTag("menu_files")
+                    )
+                    HorizontalDivider()
+                    val sandboxId = conversation?.sandboxId
+                    DropdownMenuItem(
+                        text = { Text("Pause sandbox") },
+                        enabled = sandboxId != null && !sandboxStatus.isWorking,
+                        onClick = {
+                            showSandboxMenu = false
+                            sandboxId?.let(onPauseSandbox)
+                        },
+                        modifier = Modifier.testTag("menu_pause_sandbox")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Resume sandbox") },
+                        enabled = sandboxId != null && !sandboxStatus.isWorking,
+                        onClick = {
+                            showSandboxMenu = false
+                            sandboxId?.let(onResumeSandbox)
+                        },
+                        modifier = Modifier.testTag("menu_resume_sandbox")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete sandbox") },
+                        enabled = sandboxId != null && !sandboxStatus.isWorking,
+                        onClick = {
+                            showSandboxMenu = false
+                            sandboxId?.let(onDeleteSandbox)
+                        },
+                        modifier = Modifier.testTag("menu_delete_sandbox")
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Conversation skills") },
+                        onClick = {
+                            showSandboxMenu = false
+                            onLoadSkills()
+                        },
+                        modifier = Modifier.testTag("menu_load_skills")
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Export trajectory") },
+                        onClick = {
+                            showSandboxMenu = false
+                            onExportTrajectory()
+                        },
+                        modifier = Modifier.testTag("menu_export_trajectory")
+                    )
+                }
+            }
             IconButton(onClick = { showDeleteConfirmation = true }) {
                 Icon(
                     Icons.Default.Delete,
@@ -174,9 +269,9 @@ fun ConversationDetailScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (isDemoMode) {
+            skills.takeIf { it.isNotEmpty() }?.let { list ->
                 item {
-                    DemoBanner()
+                    SkillsCard(list)
                 }
             }
             if (events.isEmpty()) {
@@ -214,7 +309,9 @@ fun ConversationDetailScreen(
                             )
                             TextButton(onClick = {
                                 conversation?.let {
-                                    uriHandler.openUri("https://app.all-hands.dev/conversations/${it.id}")
+                                    uriHandler.openUri(
+                                        "${webBaseUrl.trimEnd('/')}/conversations/${it.id}"
+                                    )
                                 }
                             }) {
                                 Text("Open in web app")
@@ -297,14 +394,34 @@ fun ConversationDetailScreen(
         )
     }
 
+    if (showRenameDialog) {
+        RenameConversationDialog(
+            currentTitle = conversation?.title ?: "",
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { newTitle ->
+                showRenameDialog = false
+                conversation?.id?.let { onRename(it, newTitle) }
+            }
+        )
+    }
+
+    if (showFilesSheet) {
+        WorkspaceFilesDialog(
+            files = files,
+            isLoading = isFilesLoading,
+            fileContents = fileContents,
+            onReadFile = onReadFile,
+            onDismiss = { showFilesSheet = false }
+        )
+    }
+
     if (showProfileDialog) {
         AgentProfileDialog(
             profile = activeProfile,
             onDismiss = { showProfileDialog = false },
-            onAgentKindChanged = onAgentKindChanged,
             onModelChanged = onModelChanged,
-            onAcpCommandChanged = onAcpCommandChanged,
-            title = "Agent & LLM · this conversation"
+            title = "Agent & LLM · this conversation",
+            availableModels = availableModels
         )
         TextButton(
             onClick = {
@@ -319,21 +436,122 @@ fun ConversationDetailScreen(
 }
 
 @Composable
-private fun DemoBanner() {
+private fun SkillsCard(skills: List<String>) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("skills_card")
     ) {
-        Text(
-            "Demo conversation — connect your OpenHands Cloud API key in Settings to run live agents.",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(10.dp)
-        )
+        Column(Modifier.padding(12.dp)) {
+            Text("Skills active in this sandbox", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                skills.joinToString(", "),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
+}
+
+@Composable
+private fun RenameConversationDialog(
+    currentTitle: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var title by remember(currentTitle) { mutableStateOf(currentTitle) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename conversation") },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Title") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = CanvasPrimary,
+                    unfocusedBorderColor = CanvasBorder
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("field_conversation_title")
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(title) },
+                enabled = title.isNotBlank(),
+                modifier = Modifier.testTag("btn_confirm_rename_conversation")
+            ) {
+                Text("Save", color = CanvasPrimaryDeep)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun WorkspaceFilesDialog(
+    files: List<String>,
+    isLoading: Boolean,
+    fileContents: Map<String, String>,
+    onReadFile: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Workspace files") },
+        text = {
+            Column(Modifier.testTag("files_dialog")) {
+                if (isLoading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else if (files.isEmpty()) {
+                    Text(
+                        "No files listed. The sandbox may still be starting.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.height(240.dp)) {
+                        items(files, key = { it }) { path ->
+                            val open = fileContents.containsKey(path)
+                            Column(Modifier.fillMaxWidth()) {
+                                TextButton(
+                                    onClick = { onReadFile(path) },
+                                    modifier = Modifier.testTag("file_row")
+                                ) {
+                                    Text(path, fontSize = 12.sp, maxLines = 1)
+                                }
+                                if (open) {
+                                    Text(
+                                        fileContents[path] ?: "",
+                                        fontSize = 10.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        maxLines = 8,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 12.dp, bottom = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
 
 /** Compact list of working-tree changes with an expandable unified diff. */

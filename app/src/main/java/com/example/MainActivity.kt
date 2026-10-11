@@ -29,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.ConversationDetailScreen
@@ -55,6 +56,36 @@ class MainActivity : ComponentActivity() {
   }
 }
 
+/** Writes text to the cache dir and hands it to the system share sheet. */
+private fun shareText(context: android.content.Context, filename: String, content: String) {
+  try {
+    val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+    val file = java.io.File(dir, filename)
+    file.writeText(content)
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+      context,
+      "${context.packageName}.fileprovider",
+      file
+    )
+    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+      type = "application/json"
+      putExtra(android.content.Intent.EXTRA_STREAM, uri)
+      putExtra(android.content.Intent.EXTRA_TITLE, filename)
+      addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(
+      android.content.Intent.createChooser(share, "Export trajectory")
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+  } catch (e: Exception) {
+    android.widget.Toast.makeText(
+      context,
+      "Could not export: ${e.message ?: "unknown error"}",
+      android.widget.Toast.LENGTH_LONG
+    ).show()
+  }
+}
+
 @Composable
 fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
   val uiState by viewModel.uiState.collectAsState()
@@ -62,6 +93,7 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
   val templates by viewModel.templates.collectAsState()
   val events by viewModel.detailEvents.collectAsState()
   val snackbarHostState = remember { SnackbarHostState() }
+  val context = LocalContext.current
 
   LaunchedEffect(uiState.notification) {
     uiState.notification?.let { msg ->
@@ -130,10 +162,27 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
             onSendMessage = { text -> viewModel.sendFollowUp(text) },
             onDelete = { viewModel.deleteConversation(uiState.detailConversationId!!) },
             onRefreshGit = { viewModel.refreshGitChanges() },
-            onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
             onModelChanged = { model -> viewModel.setModel(model) },
-            onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) },
-            onResetProfile = { viewModel.resetConversationProfile() }
+            onResetProfile = { viewModel.resetConversationProfile() },
+            webBaseUrl = viewModel.webBaseUrl(),
+            availableModels = uiState.availableModels,
+            onRename = { id, title -> viewModel.renameConversation(id, title) },
+            sandboxStatus = uiState.sandboxStatus,
+            onPauseSandbox = { id -> viewModel.pauseSandbox(id) },
+            onResumeSandbox = { id -> viewModel.resumeSandbox(id) },
+            onDeleteSandbox = { id -> viewModel.deleteSandbox(id) },
+            files = uiState.files,
+            isFilesLoading = uiState.isFilesLoading,
+            fileContents = uiState.fileContents,
+            onLoadFiles = { path -> viewModel.loadWorkspaceFiles(path) },
+            onReadFile = { path -> viewModel.readWorkspaceFile(path) },
+            skills = uiState.skills,
+            onLoadSkills = { viewModel.loadConversationSkills() },
+            onExportTrajectory = {
+                viewModel.exportTrajectory { filename, json ->
+                    shareText(context, filename, json)
+                }
+            }
         )
       } else {
         when (uiState.currentTab) {
@@ -184,9 +233,12 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               onSearchRepositories = { viewModel.searchRepositories() },
               onSelectRepository = { repo -> viewModel.selectRepository(repo) },
               onSelectBranch = { branch -> viewModel.updateSelectedBranch(branch) },
-              onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
-              onModelChanged = { model -> viewModel.setModel(model) },
-              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) }
+                onModelChanged = { model -> viewModel.setModel(model) },
+                suggestedTasks = uiState.suggestedTasks,
+              isLoadingSuggested = uiState.isLoadingSuggested,
+              availableModels = uiState.availableModels,
+              onLoadSuggestedTasks = { viewModel.loadSuggestedTasks() },
+              onSelectSuggestedTask = { task -> viewModel.applySuggestedTask(task) }
           )
           AppTab.SETTINGS -> SettingsScreen(
               apiKey = uiState.apiKeyInput,
@@ -202,16 +254,15 @@ fun OpenHandsApp(viewModel: OpenHandsViewModel = viewModel()) {
               activeCloudProfile = uiState.activeCloudProfile,
               secrets = uiState.secrets,
               isCloudSettingsLoading = uiState.isCloudSettingsLoading,
+              availableModels = uiState.availableModels,
               onApiKeyChanged = { viewModel.updateApiKeyInput(it) },
               onBaseUrlChanged = { viewModel.updateBaseUrlInput(it) },
               onSaveConfig = { viewModel.saveConfig() },
               onTestConnection = { viewModel.testConnection() },
               onClearApiKey = { viewModel.clearApiKey() },
               onClearCache = { viewModel.clearLocalData() },
-              onAgentKindChanged = { kind -> viewModel.setAgentKind(kind) },
-              onModelChanged = { model -> viewModel.setModel(model) },
-              onAcpCommandChanged = { cmd -> viewModel.setAcpCommand(cmd) },
-              onRefreshCloudSettings = { viewModel.refreshCloudSettings() },
+                onModelChanged = { model -> viewModel.setModel(model) },
+                onRefreshCloudSettings = { viewModel.refreshCloudSettings() },
               onActivateCloudProfile = { name -> viewModel.activateCloudProfile(name) },
               onDeleteCloudProfile = { name -> viewModel.deleteCloudProfile(name) },
               onRenameCloudProfile = { name, newName -> viewModel.renameCloudProfile(name, newName) },

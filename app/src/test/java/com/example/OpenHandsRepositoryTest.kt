@@ -147,11 +147,82 @@ class OpenHandsRepositoryTest {
     }
 
     @Test
-    fun `demo seed only when unconfigured`() = runTest {
+    fun `seeding never fabricates cloud conversations`() = runTest {
         settings.apiKey = ""
         repo.seedLocalData()
-        val demo = repo.conversationsFlow.first()
-        assertEquals(3, demo.size)
+        val stored = repo.conversationsFlow.first()
+        assertTrue("Expected no fabricated conversations, got ${stored.size}", stored.isEmpty())
+    }
+
+    @Test
+    fun `templates are seeded as a local feature`() = runTest {
+        settings.apiKey = ""
+        repo.seedLocalData()
+        assertTrue(repo.templatesFlow.first().isNotEmpty())
+    }
+
+    @Test
+    fun `sandbox pause hits the documented endpoint`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("{}")
+                .addHeader("Content-Type", "application/json")
+        )
+        val result = repo.pauseSandbox("sbx-1")
+        assertTrue(result.isSuccess)
+        assertEquals("/api/v1/sandboxes/sbx-1/pause", server.takeRequest().path)
+    }
+
+    @Test
+    fun `workspace file listing calls the conversation files route`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""["a.py","b.py"]""")
+                .addHeader("Content-Type", "application/json")
+        )
+        val result = repo.listFiles("conv-7")
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("a.py", "b.py"), result.getOrThrow())
+        assertTrue(server.takeRequest().path!!.startsWith("/api/v1/app-conversations/conv-7/files"))
+    }
+
+    @Test
+    fun `conversation rename sends a PATCH with the new title`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"id":"conv-3","title":"Renamed","created_at":"2025-01-01T00:00:00Z"}"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.renameConversation("conv-3", "Renamed")
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals("PATCH", request.method)
+        assertTrue(request.body.readUtf8().contains("Renamed"))
+    }
+
+    @Test
+    fun `model catalogue is fetched from the config models route`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"items":[{"name":"openhands/gpt-5","provider":"openai","verified":true},
+                            {"name":"x/draft","provider":"x","verified":false}]}"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.searchModels(limit = 10)
+        assertTrue(result.isSuccess)
+        assertEquals(2, result.getOrThrow().size)
+        assertTrue(server.takeRequest().path!!.startsWith("/api/v1/config/models/search"))
+    }
+
+    @Test
+    fun `suggested tasks are fetched from the git route`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"items":[{"git_provider":"github","task_type":"FAILING_CHECKS","repo":"o/r","issue_number":12,"title":"Fix CI"}]}"""
+            ).addHeader("Content-Type", "application/json")
+        )
+        val result = repo.suggestedTasks()
+        assertTrue(result.isSuccess)
+        assertEquals("Fix CI", result.getOrThrow().first().title)
+        assertTrue(server.takeRequest().path!!.startsWith("/api/v1/git/suggested-tasks/search"))
     }
 
     @Test

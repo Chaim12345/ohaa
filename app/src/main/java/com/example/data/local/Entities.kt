@@ -19,7 +19,8 @@ data class ConversationEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val cost: Double = 0.0,
-    val lastMessage: String? = null
+    val lastMessage: String? = null,
+    val sandboxId: String? = null
 ) {
     fun toDomain(): OpenHandsConversation = OpenHandsConversation(
         id = id,
@@ -31,7 +32,8 @@ data class ConversationEntity(
         createdAt = createdAt,
         updatedAt = updatedAt,
         cost = cost,
-        lastMessage = lastMessage
+        lastMessage = lastMessage,
+        sandboxId = sandboxId
     )
 
     companion object {
@@ -45,7 +47,8 @@ data class ConversationEntity(
             createdAt = model.createdAt,
             updatedAt = model.updatedAt,
             cost = model.cost,
-            lastMessage = model.lastMessage
+            lastMessage = model.lastMessage,
+            sandboxId = model.sandboxId
         )
     }
 }

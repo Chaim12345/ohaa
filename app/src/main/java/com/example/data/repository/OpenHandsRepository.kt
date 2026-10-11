@@ -49,6 +49,8 @@ sealed class CloudError(message: String) : Exception(message) {
     class Unauthorized : CloudError("Invalid or missing API key (401). Update it in Settings.")
     class Api(val code: Int, detail: String) : CloudError("Cloud API error $code: $detail")
     class Network(cause: Throwable) : CloudError("Network error: ${cause.message ?: "connection failed"}")
+    /** A response arrived but could not be decoded — a bug, not a connectivity problem. */
+    class Parse(cause: Throwable) : CloudError("Unexpected response from the server: ${cause.message ?: "could not decode"}")
 }
 
 class OpenHandsRepository(
@@ -77,6 +79,9 @@ class OpenHandsRepository(
     }
 
     fun isConfigured(): Boolean = settings.hasApiKey()
+
+    /** Base URL the client is talking to, for building web-app links. */
+    fun baseUrl(): String = settings.baseUrl
 
     /** Returns the stored key so the UI can keep it when re-saving settings. */
     fun storedApiKey(): String = settings.apiKey
@@ -408,14 +413,6 @@ class OpenHandsRepository(
             }.map { }
         }
 
-    /** For ACP-backed conversations: switch the model exposed by the ACP server. */
-    suspend fun switchAcpModel(conversationId: String, model: String): Result<Unit> =
-        withContext(Dispatchers.IO) {
-            call("switch ACP model") {
-                api.switchAcpModel(conversationId, com.example.data.model.SwitchAcpModelRequest(model))
-            }.map { }
-        }
-
     // ---- Sandboxes ---------------------------------------------------------------
 
     suspend fun searchSandboxes(limit: Int = 50): Result<List<SandboxDto>> =
@@ -498,10 +495,22 @@ class OpenHandsRepository(
         call("web client config") { api.webClientConfig() }
     }
 
-    /** Verified LLM models available on the cloud (for model pickers). */
-    suspend fun searchModels(query: String? = null, limit: Int = 50): Result<List<com.example.data.model.LlmModelDto>> =
+    /** LLM models available on the cloud, optionally scoped to one provider. */
+    suspend fun searchModels(
+        query: String? = null,
+        verifiedOnly: Boolean = false,
+        provider: String? = null,
+        limit: Int = 50
+    ): Result<List<com.example.data.model.LlmModelDto>> =
         withContext(Dispatchers.IO) {
-            call("search models") { api.searchModels(query = query, limit = limit) }.map { it.items }
+            call("search models") {
+                api.searchModels(
+                    query = query,
+                    verified = verifiedOnly.takeIf { it },
+                    provider = provider?.takeIf { it.isNotBlank() },
+                    limit = limit
+                )
+            }.map { it.items }
         }
 
     suspend fun searchProviders(query: String? = null): Result<List<com.example.data.model.LlmProviderDto>> =
@@ -594,7 +603,8 @@ class OpenHandsRepository(
         createdAt = parseTimestamp(createdAt) ?: fallbackTime,
         updatedAt = parseTimestamp(updatedAt) ?: parseTimestamp(createdAt) ?: fallbackTime,
         cost = cost,
-        lastMessage = null
+        lastMessage = null,
+        sandboxId = sandboxId
     )
 
     private fun EventDto.toEntity(conversationId: String): AgentEventEntity {
@@ -633,17 +643,12 @@ class OpenHandsRepository(
     }
 
     /**
-     * Seeds templates always; seeds clearly-labeled demo conversations only when
-     * no API key is configured (demo mode) and the store is empty.
+     * Seeds the local template library (a device-local feature, not cloud data).
+     * No conversation or event data is ever fabricated: the conversation list
+     * reflects the cloud account exclusively.
      */
     suspend fun seedLocalData() = withContext(Dispatchers.IO) {
         seedTemplatesIfEmpty()
-        if (settings.hasApiKey()) return@withContext
-        val existing = conversationDao.getAllConversations().first()
-        if (existing.isEmpty()) {
-            conversationDao.insertConversations(DEMO_CONVERSATIONS(now()))
-            eventDao.insertEvents(DEMO_EVENTS(now()))
-        }
     }
 
     suspend fun seedTemplatesIfEmpty() {
@@ -676,8 +681,12 @@ class OpenHandsRepository(
             }
         } catch (e: java.io.IOException) {
             Result.failure(CloudError.Network(e))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Result.failure(CloudError.Network(e))
+            // A decode/type failure means the server answered; reporting it as a
+            // network problem would send users chasing connectivity that is fine.
+            Result.failure(CloudError.Parse(e))
         }
     }
 
@@ -758,90 +767,6 @@ class OpenHandsRepository(
             val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
             return era * 146_097 + doe - 719_468
         }
-
-        internal fun DEMO_CONVERSATIONS(now: Long): List<ConversationEntity> = listOf(
-            ConversationEntity(
-                id = "demo-1",
-                title = "Fix token validation in auth middleware",
-                sandboxStatus = "RUNNING",
-                executionStatus = "finished",
-                rawStatus = null,
-                repository = "All-Hands-AI/OpenHands",
-                createdAt = now - 7_200_000,
-                updatedAt = now - 3_600_000,
-                cost = 0.08,
-                lastMessage = "All 14 unit tests pass — ready for PR."
-            ),
-            ConversationEntity(
-                id = "demo-2",
-                title = "Implement rate limiting middleware for FastAPI",
-                sandboxStatus = "RUNNING",
-                executionStatus = "running",
-                rawStatus = null,
-                repository = "octocat/Hello-World",
-                createdAt = now - 3_600_000,
-                updatedAt = now - 120_000,
-                cost = 0.04,
-                lastMessage = "Writing sliding-window limiter tests…"
-            ),
-            ConversationEntity(
-                id = "demo-3",
-                title = "Upgrade dependencies + security audit",
-                sandboxStatus = "STARTING",
-                executionStatus = null,
-                rawStatus = "PREPARING_REPOSITORY",
-                repository = "example/api-service",
-                createdAt = now - 600_000,
-                updatedAt = now - 60_000,
-                cost = 0.0,
-                lastMessage = null
-            )
-        )
-
-        internal fun DEMO_EVENTS(now: Long): List<AgentEventEntity> = listOf(
-            AgentEventEntity(
-                id = "demo-e1",
-                conversationId = "demo-1",
-                timestamp = now - 7_200_000,
-                source = "user",
-                actionType = "message",
-                content = "Bearer token parsing crashes when the Authorization header has extra whitespace. Fix and cover with tests."
-            ),
-            AgentEventEntity(
-                id = "demo-e2",
-                conversationId = "demo-1",
-                timestamp = now - 7_100_000,
-                source = "agent",
-                actionType = "thought",
-                content = "Inspect how the auth middleware splits the Authorization header, then harden the parser."
-            ),
-            AgentEventEntity(
-                id = "demo-e3",
-                conversationId = "demo-1",
-                timestamp = now - 6_900_000,
-                source = "agent",
-                actionType = "bash",
-                content = "grep -rn \"Bearer\" src/",
-                detail = "src/middleware/auth.py:42: token = auth_header.split('Bearer ')[1]"
-            ),
-            AgentEventEntity(
-                id = "demo-e4",
-                conversationId = "demo-1",
-                timestamp = now - 6_500_000,
-                source = "agent",
-                actionType = "edit",
-                content = "src/middleware/auth.py",
-                detail = "@@ -40 +41,4 @@\n- token = auth_header.split('Bearer ')[1]\n+ parts = auth_header.strip().split()\n+ if len(parts) != 2 or parts[0].lower() != 'bearer':\n+     raise HTTPException(401, 'Invalid Bearer format')"
-            ),
-            AgentEventEntity(
-                id = "demo-e5",
-                conversationId = "demo-1",
-                timestamp = now - 4_000_000,
-                source = "agent",
-                actionType = "message",
-                content = "Fixed the parser and added whitespace tests — 14/14 passing. Want me to open a PR?"
-            )
-        )
 
         internal val DEFAULT_TEMPLATES: List<SavedTemplateEntity> = listOf(
             SavedTemplateEntity(

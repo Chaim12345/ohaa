@@ -25,7 +25,6 @@ import com.example.data.model.SecretDto
 import com.example.data.model.UserInfoDto
 import com.example.data.model.BranchDto
 import com.example.data.model.RepositoryDto
-import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
 import com.example.data.settings.DEFAULT_OPENHANDS_MODEL
 import com.example.ui.screens.ConversationDetailScreen
@@ -70,9 +69,7 @@ class UiRegressionTest {
                     onSearchRepositories = {},
                     onSelectRepository = {},
                     onSelectBranch = {},
-                    onAgentKindChanged = {},
                     onModelChanged = {},
-                    onAcpCommandChanged = {}
                 )
             }
         }
@@ -81,7 +78,7 @@ class UiRegressionTest {
             .performScrollToNode(hasTestTag("btn_launch"))
         composeTestRule.onNodeWithTag("btn_launch").assertIsDisplayed().performClick()
         assertTrue(launched)
-        composeTestRule.onNodeWithText("Demo mode is read-only. Add an API key in Settings to launch a live cloud agent.")
+        composeTestRule.onNodeWithText("Not connected — add your API key in Settings to launch a live cloud agent.")
             .assertExists()
     }
 
@@ -109,9 +106,7 @@ class UiRegressionTest {
                     onSearchRepositories = {},
                     onSelectRepository = {},
                     onSelectBranch = {},
-                    onAgentKindChanged = {},
                     onModelChanged = {},
-                    onAcpCommandChanged = {}
                 )
             }
         }
@@ -139,9 +134,7 @@ class UiRegressionTest {
                     onTestConnection = { connectionTested = true },
                     onClearApiKey = {},
                     onClearCache = {},
-                    onAgentKindChanged = {},
                     onModelChanged = {},
-                    onAcpCommandChanged = {}
                 )
             }
         }
@@ -174,9 +167,7 @@ class UiRegressionTest {
                     onTestConnection = {},
                     onClearApiKey = {},
                     onClearCache = { cleared = true },
-                    onAgentKindChanged = {},
                     onModelChanged = {},
-                    onAcpCommandChanged = {}
                 )
             }
         }
@@ -222,9 +213,7 @@ class UiRegressionTest {
                 onTestConnection = {},
                 onClearApiKey = {},
                 onClearCache = {},
-                onAgentKindChanged = {},
                 onModelChanged = {},
-                onAcpCommandChanged = {},
                 onActivateCloudProfile = onActivateCloudProfile,
                 onDeleteCloudProfile = onDeleteCloudProfile,
                 onRenameCloudProfile = onRenameCloudProfile,
@@ -373,9 +362,7 @@ class UiRegressionTest {
                     onSendMessage = {},
                     onDelete = { deleted = true },
                     onRefreshGit = {},
-                    onAgentKindChanged = {},
                     onModelChanged = {},
-                    onAcpCommandChanged = {},
                     onResetProfile = {}
                 )
             }
@@ -389,8 +376,7 @@ class UiRegressionTest {
     }
 
     @Test
-    fun `agent profile is visible and switchable from the chat header`() {
-        var kindChanged = AgentKind.OPENHANDS
+    fun `model selection is visible and switchable from the chat header`() {
         var modelChanged = ""
         val conversation = OpenHandsConversation(
             id = "conversation-1",
@@ -405,9 +391,7 @@ class UiRegressionTest {
             lastMessage = null
         )
 
-        var currentKind by mutableStateOf(AgentKind.OPENHANDS)
-        var currentModel by mutableStateOf("openai/gpt-4o")
-        var currentAcpCommand by mutableStateOf("")
+        var currentModel by mutableStateOf("openhands/deepseek-v4.1-flash")
         composeTestRule.setContent {
             MyApplicationTheme {
                 ConversationDetailScreen(
@@ -415,11 +399,7 @@ class UiRegressionTest {
                     events = emptyList(),
                     isSending = false,
                     isDemoMode = false,
-                    activeProfile = AgentProfile(
-                        kind = currentKind,
-                        model = currentModel,
-                        acpCommand = currentAcpCommand
-                    ),
+                    activeProfile = AgentProfile(model = currentModel),
                     gitDiff = GitDiffDto(
                         diff = "diff --git a/x b/x",
                         files = listOf(
@@ -432,27 +412,23 @@ class UiRegressionTest {
                     onSendMessage = {},
                     onDelete = {},
                     onRefreshGit = {},
-                    onAgentKindChanged = { kindChanged = it; currentKind = it },
                     onModelChanged = { modelChanged = it; currentModel = it },
-                    onAcpCommandChanged = { currentAcpCommand = it },
-                    onResetProfile = {}
+                    onResetProfile = {},
+                    availableModels = listOf("openhands/deepseek-v4-flash", "openhands/deepseek-v4.1-flash")
                 )
             }
         }
 
-        // The header exposes the active agent + LLM.
+        // The header exposes the active model.
         composeTestRule.onNodeWithTag("agent_profile_badge").assertExists()
         composeTestRule.onNodeWithTag("agent_profile_label")
-            .assertTextEquals("OpenHands · gpt-4o")
+            .assertTextEquals("deepseek-v4.1-flash")
 
-        // Tapping opens the switcher; toggling ACP calls through (the dialog is
-        // stateless — the test host holds profile state exactly like MainActivity).
+        // Tapping opens the switcher; choosing a catalogue model calls through.
         composeTestRule.onNodeWithTag("agent_profile_badge").performClick()
         composeTestRule.onNodeWithText("Agent & LLM · this conversation").assertExists()
-        composeTestRule.onNodeWithTag("agent_kind_ACP").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("field_acp_command")
-            .performTextInput("npx -y custom-acp")
+        composeTestRule.onNodeWithText("deepseek-v4-flash").performClick()
         composeTestRule.onNodeWithTag("btn_profile_done").performClick()
+        assertTrue(modelChanged == "openhands/deepseek-v4-flash")
     }
 }

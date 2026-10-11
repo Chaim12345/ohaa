@@ -103,7 +103,7 @@ fun DashboardScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Agent Canvas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        if (isDemoMode) "Demo data — connect Cloud in Settings"
+                        if (isDemoMode) "Not connected — add an API key in Settings"
                         else "OpenHands Cloud",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -242,7 +242,7 @@ private fun ConnectionCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     text = when {
-                        isDemoMode -> "Demo mode"
+                        isDemoMode -> "Not connected"
                         healthy == true -> "Cloud connected"
                         healthy == false -> "Connection issue"
                         else -> "Not connected"

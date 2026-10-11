@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.LlmProfileDto
 import com.example.data.model.SecretDto
 import com.example.data.model.UserInfoDto
-import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
 import com.example.ui.components.AgentProfileDialog
 import com.example.ui.components.ProfileSummaryCard
@@ -80,15 +79,14 @@ fun SettingsScreen(
     activeCloudProfile: String? = null,
     secrets: List<SecretDto> = emptyList(),
     isCloudSettingsLoading: Boolean = false,
+    availableModels: List<String> = emptyList(),
     onApiKeyChanged: (String) -> Unit,
     onBaseUrlChanged: (String) -> Unit,
     onSaveConfig: () -> Unit,
     onTestConnection: () -> Unit,
     onClearApiKey: () -> Unit,
     onClearCache: () -> Unit,
-    onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit,
     onRefreshCloudSettings: () -> Unit = {},
     onActivateCloudProfile: (String) -> Unit = {},
     onDeleteCloudProfile: (String) -> Unit = {},
@@ -499,7 +497,7 @@ fun SettingsScreen(
 
         Text("Local data", style = MaterialTheme.typography.titleMedium)
         Text(
-            if (isDemoMode) "Demo mode is active — sample conversations are shown."
+            if (isDemoMode) "Not connected — cached conversations are shown from this device."
             else "Cached conversations and events live on this device.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -525,7 +523,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showClearCacheConfirmation = false },
             title = { Text("Clear local data?") },
-            text = { Text("Cached conversations and event transcripts will be removed from this device. Demo data can be restored afterward.") },
+            text = { Text("Cached conversations and event transcripts will be removed from this device. Cloud conversations remain on the server.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -549,10 +547,9 @@ fun SettingsScreen(
         AgentProfileDialog(
             profile = activeProfile,
             onDismiss = { showProfileDialog = false },
-            onAgentKindChanged = onAgentKindChanged,
             onModelChanged = onModelChanged,
-            onAcpCommandChanged = onAcpCommandChanged,
-            title = "Agent & LLM · default"
+            title = "Agent & LLM",
+            availableModels = availableModels
         )
     }
 

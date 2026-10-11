@@ -18,12 +18,13 @@ import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
 import com.example.data.model.SecretDto
 import com.example.data.model.StartTaskDto
+import com.example.data.model.SuggestedTaskDto
 import com.example.data.model.UserInfoDto
 import com.example.data.repository.CloudError
 import com.example.data.repository.OpenHandsRepository
-import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
 import com.example.data.settings.AgentProfileStore
+import com.example.data.settings.OPENHANDS_PROVIDER
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,7 +61,7 @@ data class OpenHandsUiState(
     val isSending: Boolean = false,
     val isOnline: Boolean = false,
     val offlineMessage: String? = null,
-    val isDemoMode: Boolean = true,
+    val isDemoMode: Boolean = false,
     val notification: String? = null,
     // New task
     val newTaskPrompt: String = "",
@@ -68,6 +69,11 @@ data class OpenHandsUiState(
     val isLaunching: Boolean = false,
     val launchStatusText: String? = null,
     val launchStage: LaunchStage = LaunchStage.IDLE,
+    val suggestedTasks: List<SuggestedTaskDto> = emptyList(),
+    val isLoadingSuggested: Boolean = false,
+    // Live model catalogue (fetched from the cloud, not hardcoded)
+    val availableModels: List<String> = emptyList(),
+    val isLoadingModels: Boolean = false,
     // Settings
     val apiKeyInput: String = "",
     val baseUrlInput: String = ApiSettings.DEFAULT_BASE_URL,
@@ -80,8 +86,7 @@ data class OpenHandsUiState(
     val activeCloudProfile: String? = null,
     val secrets: List<SecretDto> = emptyList(),
     val isCloudSettingsLoading: Boolean = false,
-    // Agent & LLM — what the user sees as "active" right now. Defaults to the
-    // plain OpenHands agent; ACP is only ever used when explicitly chosen.
+    // Agent & LLM — the OpenHands agent with a chooseable free model.
     val activeProfile: AgentProfile = AgentProfile(),
     // Git integration — repos from the configured upstream provider
     val repoSearchResults: List<RepositoryDto> = emptyList(),
@@ -89,7 +94,19 @@ data class OpenHandsUiState(
     val selectedBranch: String = "",
     val isSearchingRepos: Boolean = false,
     val gitDiff: GitDiffDto? = null,
-    val isGitLoading: Boolean = false
+    val isGitLoading: Boolean = false,
+    // Sandbox / workspace inspection for the open conversation
+    val sandboxStatus: SandboxUiState = SandboxUiState(),
+    val files: List<String> = emptyList(),
+    val isFilesLoading: Boolean = false,
+    val fileContents: Map<String, String> = emptyMap(),
+    val skills: List<String> = emptyList()
+)
+
+/** Sandbox action progress, so the UI can disable controls while a call is in flight. */
+data class SandboxUiState(
+    val isWorking: Boolean = false,
+    val message: String? = null
 )
 
 enum class LaunchStage(val label: String) {
@@ -161,9 +178,13 @@ class OpenHandsViewModel(application: Application) :
                 )
             }
             _uiState.value = _uiState.value.copy(isDemoMode = !repository.isConfigured())
-            // Reflect the connection state immediately (demo notice or cloud sync)
-            // instead of leaving the dashboard in a blank "Not connected" limbo.
+            // Reflect the connection state immediately instead of leaving the
+            // dashboard in a blank "Not connected" limbo.
             refreshConversations(showFeedback = false)
+            if (repository.isConfigured()) {
+                refreshCloudSettings()
+                loadModels()
+            }
         }
     }
 
@@ -172,6 +193,9 @@ class OpenHandsViewModel(application: Application) :
     fun setTab(tab: AppTab) {
         _uiState.value = _uiState.value.copy(currentTab = tab)
     }
+
+    /** Base URL for "open in web app" links, matching the configured server. */
+    fun webBaseUrl(): String = repository.baseUrl()
 
     fun openDetail(conversationId: String) {
         _uiState.value = _uiState.value.copy(
@@ -199,7 +223,7 @@ class OpenHandsViewModel(application: Application) :
             if (!repository.isConfigured()) {
                 _uiState.value = _uiState.value.copy(
                     isOnline = false,
-                    offlineMessage = "Demo mode — add your OpenHands Cloud API key in Settings to go live.",
+                    offlineMessage = "Not connected — add your OpenHands Cloud API key in Settings.",
                     isRefreshing = false
                 )
                 return@launch
@@ -281,11 +305,8 @@ class OpenHandsViewModel(application: Application) :
             )
             val repo = _uiState.value.newTaskRepo.trim().ifEmpty { null }
             val profile = _uiState.value.activeProfile
-            val llmModel = if (profile.kind == AgentKind.OPENHANDS) profile.model else null
-            val agentType = when (profile.kind) {
-                AgentKind.OPENHANDS -> "default"
-                AgentKind.ACP -> "acp"
-            }
+            val llmModel = profile.model
+            val agentType = "default"
 
             repository.createConversation(
                 prompt,
@@ -429,7 +450,12 @@ class OpenHandsViewModel(application: Application) :
                 .onSuccess { branches ->
                     _uiState.value = _uiState.value.copy(repoBranchResults = branches)
                 }
-                .onFailure { }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        repoBranchResults = emptyList(),
+                        notification = "Branches: ${err.toUserMessage()}"
+                    )
+                }
         }
     }
 
@@ -466,14 +492,244 @@ class OpenHandsViewModel(application: Application) :
         }
     }
 
+    // ---- Sandbox control, workspace files, skills, export ------------------------
+
+    private fun sandboxIdFor(conversationId: String): String? =
+        conversations.value.find { it.id == conversationId }?.sandboxId
+
+    /** Pauses the sandbox backing a conversation. */
+    fun pauseSandbox(conversationId: String) {
+        val sandboxId = sandboxIdFor(conversationId)
+        if (sandboxId == null) {
+            _uiState.value = _uiState.value.copy(notification = "No sandbox is attached to this conversation yet")
+            return
+        }
+        runSandboxAction(conversationId, "Sandbox paused") { repository.pauseSandbox(sandboxId) }
+    }
+
+    /** Resumes a paused sandbox. */
+    fun resumeSandbox(conversationId: String) {
+        val sandboxId = sandboxIdFor(conversationId)
+        if (sandboxId == null) {
+            _uiState.value = _uiState.value.copy(notification = "No sandbox is attached to this conversation yet")
+            return
+        }
+        runSandboxAction(conversationId, "Sandbox resumed") { repository.resumeSandbox(sandboxId) }
+    }
+
+    /** Deletes the sandbox (the conversation row stays). */
+    fun deleteSandbox(conversationId: String) {
+        val sandboxId = sandboxIdFor(conversationId)
+        if (sandboxId == null) {
+            _uiState.value = _uiState.value.copy(notification = "No sandbox is attached to this conversation yet")
+            return
+        }
+        runSandboxAction(conversationId, "Sandbox deleted") { repository.deleteSandbox(sandboxId) }
+    }
+
+    private fun runSandboxAction(
+        conversationId: String,
+        successMessage: String,
+        action: suspend () -> Result<Unit>
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(sandboxStatus = SandboxUiState(isWorking = true))
+            action()
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        sandboxStatus = SandboxUiState(isWorking = false),
+                        notification = successMessage
+                    )
+                    repository.refreshConversations(showFeedback = false)
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        sandboxStatus = SandboxUiState(isWorking = false),
+                        notification = "Sandbox: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Lists the workspace files for the open conversation's sandbox. */
+    fun loadWorkspaceFiles(path: String? = null) {
+        val id = _uiState.value.detailConversationId ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isFilesLoading = true)
+            repository.listFiles(id, path)
+                .onSuccess { files ->
+                    _uiState.value = _uiState.value.copy(files = files, isFilesLoading = false)
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        isFilesLoading = false,
+                        notification = "Files: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Reads a workspace file and caches its contents for display. */
+    fun readWorkspaceFile(path: String) {
+        val id = _uiState.value.detailConversationId ?: return
+        viewModelScope.launch {
+            repository.readFile(id, path)
+                .onSuccess { content ->
+                    _uiState.value = _uiState.value.copy(
+                        fileContents = _uiState.value.fileContents + (path to content.take(20_000))
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = "File: ${err.toUserMessage()}")
+                }
+        }
+    }
+
+    /** Loads the skills active in the open conversation's sandbox. */
+    fun loadConversationSkills() {
+        val id = _uiState.value.detailConversationId ?: return
+        viewModelScope.launch {
+            repository.conversationSkills(id)
+                .onSuccess { list ->
+                    _uiState.value = _uiState.value.copy(skills = list.mapNotNull { it.name })
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = "Skills: ${err.toUserMessage()}")
+                }
+        }
+    }
+
+    /** Fetches the trajectory JSON and hands it to the share sheet. */
+    fun exportTrajectory(onReady: (String, String) -> Unit) {
+        val id = _uiState.value.detailConversationId ?: return
+        viewModelScope.launch {
+            repository.downloadTrajectory(id)
+                .onSuccess { json -> onReady("trajectory-$id.json", json) }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = "Export: ${err.toUserMessage()}")
+                }
+        }
+    }
+
+    // ---- Live catalogues (models, suggested tasks) -------------------------------
+
+    /** Fetches the free OpenHands-provider models so the picker offers real choices. */
+    fun loadModels(query: String? = null) {
+        if (!repository.isConfigured()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingModels = true)
+            // Only the OpenHands provider is offered (`provider__eq`), and only
+            // verified entries; these are the models the shared key can run.
+            repository.searchModels(
+                query = query,
+                verifiedOnly = true,
+                provider = OPENHANDS_PROVIDER,
+                limit = 100
+            )
+                .onSuccess { models ->
+                    val visible = models.filter { !it.hidden && it.name.isNotBlank() }
+                    // Prefer free models; if none are flagged, keep the full set
+                    // so the picker is never empty.
+                    val freeModels = visible.filter { it.free }
+                    val chosen = (freeModels.ifEmpty { visible })
+                        .map {
+                            val provider = it.provider.orEmpty()
+                            if (provider.isBlank()) it.name else "$provider/${it.name}"
+                        }
+                        .distinct()
+                        .sorted()
+                    _uiState.value = _uiState.value.copy(
+                        availableModels = chosen,
+                        isLoadingModels = false
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingModels = false,
+                        notification = "Models: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Pulls suggested tasks (failing checks, open issues) for the New Task screen. */
+    fun loadSuggestedTasks() {
+        if (!repository.isConfigured() || _uiState.value.isLoadingSuggested) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingSuggested = true)
+            repository.suggestedTasks()
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(
+                        suggestedTasks = tasks,
+                        isLoadingSuggested = false
+                    )
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingSuggested = false,
+                        notification = "Suggested tasks: ${err.toUserMessage()}"
+                    )
+                }
+        }
+    }
+
+    /** Seeds the composer from a suggested task and opens New Task. */
+    fun applySuggestedTask(task: SuggestedTaskDto) {
+        val prompt = buildString {
+            append(task.title.ifBlank { "Investigate this task" })
+            if (task.issueNumber > 0) {
+                append("\n\nIssue #")
+                append(task.issueNumber)
+                if (task.repo.isNotBlank()) {
+                    append(" in ")
+                    append(task.repo)
+                }
+            }
+        }
+        _uiState.value = _uiState.value.copy(
+            newTaskPrompt = prompt,
+            newTaskRepo = task.repo.ifBlank { _uiState.value.newTaskRepo },
+            currentTab = AppTab.NEW_TASK
+        )
+    }
+
+    /** Server-side conversation search (title filter), with local fallback. */
+    fun searchConversationsRemote(query: String) {
+        if (!repository.isConfigured()) return
+        viewModelScope.launch {
+            repository.searchConversationsRemote(query)
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
+    /** Renames a conversation on the server and refreshes the cached row. */
+    fun renameConversation(conversationId: String, title: String) {
+        if (title.isBlank()) {
+            _uiState.value = _uiState.value.copy(notification = "Title cannot be empty")
+            return
+        }
+        viewModelScope.launch {
+            repository.renameConversation(conversationId, title.trim())
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(notification = "Conversation renamed")
+                    repository.refreshConversations(showFeedback = false)
+                }
+                .onFailure { err ->
+                    _uiState.value = _uiState.value.copy(notification = err.toUserMessage())
+                }
+        }
+    }
+
     // ---- Agent & LLM profile ------------------------------------------------------------
 
     /**
-     * Updates the visible agent/LLM selection. Inside an open conversation the
-     * change is a **mid-session switch**: it is persisted as a per-conversation
+     * Updates the visible LLM selection. Inside an open conversation the change
+     * is a **mid-session switch**: it is persisted as a per-conversation
      * override and takes effect for subsequent messages. Outside a
      * conversation (Settings / New Task) it updates the global default used
-     * for new conversations. ACP is only ever active when explicitly chosen.
+     * for new conversations.
      */
     private fun updateActiveProfile(transform: (AgentProfile) -> AgentProfile) {
         val updated = transform(_uiState.value.activeProfile)
@@ -490,15 +746,13 @@ class OpenHandsViewModel(application: Application) :
         }
     }
 
-    fun setAgentKind(kind: AgentKind) = updateActiveProfile { it.copy(kind = kind) }
-
     fun setModel(model: String) {
         if (model.isBlank()) return
         val conversationId = _uiState.value.detailConversationId
         updateActiveProfile { it.copy(model = model.trim()) }
         // Mid-session switch: push the model onto the running conversation via
         // a matching saved cloud profile (switch_profile), when one exists.
-        if (conversationId != null && _uiState.value.activeProfile.kind == AgentKind.OPENHANDS) {
+        if (conversationId != null) {
             viewModelScope.launch {
                 repository.listProfiles().onSuccess { profiles ->
                     profiles.firstOrNull { it.model == model.trim() }?.name?.let { profileName ->
@@ -511,11 +765,6 @@ class OpenHandsViewModel(application: Application) :
                 }
             }
         }
-    }
-
-    fun setAcpCommand(command: String) {
-        if (command.isBlank()) return
-        updateActiveProfile { it.copy(acpCommand = command.trim()) }
     }
 
     /** Drops this conversation's override; it falls back to the default profile. */
@@ -563,7 +812,11 @@ class OpenHandsViewModel(application: Application) :
             healthOk = null,
             healthMessage = null,
             credits = null,
-            notification = "API key cleared — demo mode enabled"
+            account = null,
+            cloudProfiles = emptyList(),
+            activeCloudProfile = null,
+            secrets = emptyList(),
+            notification = "API key cleared — reconnect in Settings to sync"
         )
     }
 
@@ -710,8 +963,9 @@ class OpenHandsViewModel(application: Application) :
     fun clearLocalData() {
         viewModelScope.launch {
             repository.clearCache()
-            repository.seedLocalData()
-            _uiState.value = _uiState.value.copy(notification = "Local data cleared")
+            _uiState.value = _uiState.value.copy(
+                notification = "Cached conversations and transcripts cleared"
+            )
         }
     }
 
@@ -723,6 +977,7 @@ class OpenHandsViewModel(application: Application) :
         is CloudError.Unauthorized -> message ?: "Unauthorized"
         is CloudError.Api -> message ?: "API error"
         is CloudError.Network -> message ?: "Network error"
+        is CloudError.Parse -> message ?: "Unexpected response"
         else -> message ?: "Unexpected error"
     }
 }

@@ -4,8 +4,15 @@ Android app (Kotlin, Retrofit + Moshi) for OpenHands Cloud.
 
 ## Build environment
 - JDK 21 (`JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`), Android SDK at `/opt/android-sdk` (set in `local.properties`).
-- The sandbox may reset between sessions: reinstall `openjdk-21-jdk-headless` and the SDK cmdline-tools (`platforms;android-36`, `build-tools;36.0.0`) if `JAVA_HOME`/`ANDROID_HOME` become invalid.
-- `./gradlew testDebugUnitTest` (71 tests), `assembleDebug`, `lintDebug` all expected green.
+- The sandbox may reset between sessions: reinstall `openjdk-21-jdk-headless` and the SDK cmdline-tools; install **`platforms;android-36.1`** (the project's `compileSdk` uses the minor-version platform), `platforms;android-36`, `build-tools;36.0.0`, then `chown -R openhands /opt/android-sdk` so Gradle can write to it.
+- `./gradlew testDebugUnitTest` (83 tests), `assembleDebug` all expected green.
+
+## Runtime behaviour (live mode, no demo data)
+- The client is always live: there is **no demo/sample data**. Conversations come only from the cloud; `seedLocalData()` seeds only the device-local prompt templates.
+- `isDemoMode` is true only when no API key is configured; in that state the UI shows "Not connected" and makes no cloud calls.
+- Models: only the **`openhands` provider's free/verified** models are offered (`GET /api/v1/config/models/search?verified__eq=true&provider__eq=openhands`, limit ≤ 100). The wire value is `provider/model`, e.g. `openhands/deepseek-v4.1-flash`. `free` models on this account: `deepseek-v4-flash`, `deepseek-v4.1-flash`.
+- There is **no ACP agent** — the only backend is the OpenHands agent (`agent_type="default"`). `AgentProfile` carries just `model`.
+
 
 ## API layer architecture
 - `app/src/main/java/com/example/data/api/OpenHandsApiService.kt` — Retrofit interface, **all 211 operations** of the live spec (https://app.all-hands.dev/openapi.json, v1.59.1).

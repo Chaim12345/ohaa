@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,48 +28,35 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.settings.AgentKind
 import com.example.data.settings.AgentProfile
-import com.example.data.settings.SUGGESTED_MODELS
+import com.example.data.settings.DEFAULT_OPENHANDS_MODEL
 import com.example.ui.theme.CanvasPrimary
 
 /**
- * Dialog for viewing and switching the active agent + LLM. Mirrors the
- * OpenHands SDK agent settings: the default OpenHands agent is driven by a
- * LiteLLM-convention model (`provider/model`), while the opt-in ACP agent
- * spawns an ACP server that manages its own LLM (model field not applicable).
- *
- * Inside a conversation the edits are a mid-session switch; in Settings they
- * update the default for new tasks. ACP is only ever active if the user
- * explicitly picks it.
+ * LLM switcher. The OpenHands agent is the only backend; the model list comes
+ * from the live cloud catalogue (free, verified `openhands`-provider entries),
+ * falling back to the built-in default when the catalogue has not loaded.
  */
 @Composable
 fun AgentProfileDialog(
     profile: AgentProfile,
     onDismiss: () -> Unit,
-    onAgentKindChanged: (AgentKind) -> Unit,
     onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit,
-    title: String = "Agent & LLM"
+    title: String = "Agent & LLM",
+    availableModels: List<String> = emptyList()
 ) {
     var modelDraft by remember(profile) { mutableStateOf(profile.model) }
-    var acpDraft by remember(profile) { mutableStateOf(profile.acpCommand) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { profileDialogBody(profile, modelDraft, acpDraft, {
-            modelDraft = it
-        }, { acpDraft = it }, onAgentKindChanged, onModelChanged, onAcpCommandChanged) },
+        text = {
+            profileDialogBody(profile, modelDraft, availableModels, { modelDraft = it }, onModelChanged)
+        },
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (profile.kind == AgentKind.OPENHANDS && modelDraft != profile.model) {
-                        onModelChanged(modelDraft)
-                    }
-                    if (profile.kind == AgentKind.ACP && acpDraft != profile.acpCommand) {
-                        onAcpCommandChanged(acpDraft)
-                    }
+                    if (modelDraft != profile.model) onModelChanged(modelDraft)
                     onDismiss()
                 },
                 modifier = Modifier.testTag("btn_profile_done")
@@ -78,105 +67,78 @@ fun AgentProfileDialog(
         }
     )
 }
+
 /** Body of the dialog — kept in its own function to keep file size manageable. */
 @Composable
 private fun profileDialogBody(
     profile: AgentProfile,
     modelDraft: String,
-    acpDraft: String,
+    availableModels: List<String>,
     onModelDraftChanged: (String) -> Unit,
-    onAcpDraftChanged: (String) -> Unit,
-    onAgentKindChanged: (AgentKind) -> Unit,
-    onModelChanged: (String) -> Unit,
-    onAcpCommandChanged: (String) -> Unit
+    onModelChanged: (String) -> Unit
 ) {
     Column(
         Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            "Agent backend",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        AgentKind.entries.forEach { kind ->
-            FilterChip(
-                selected = profile.kind == kind,
-                onClick = { onAgentKindChanged(kind) },
-                label = {
-                    Column {
-                        Text(kind.label, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            kind.blurb,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                leadingIcon = {
-                    Icon(
-                        Icons.Default.SmartToy,
-                        null,
-                        Modifier.size(16.dp),
-                        tint = if (profile.kind == kind) CanvasPrimary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("agent_kind_${kind.name}")
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.SmartToy,
+                null,
+                Modifier.size(16.dp),
+                tint = CanvasPrimary
+            )
+            Text(
+                "  OpenHands agent",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
 
-        when (profile.kind) {
-            AgentKind.OPENHANDS -> {
-                Text(
-                    "LLM model (LiteLLM convention: provider/model)",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = modelDraft,
-                    onValueChange = onModelDraftChanged,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("field_model")
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SUGGESTED_MODELS.take(3).forEach { suggestion ->
-                        FilterChip(
-                            selected = profile.model == suggestion,
-                            onClick = {
-                                onModelDraftChanged(suggestion)
-                                onModelChanged(suggestion)
-                            },
-                            label = {
-                                Text(
-                                    suggestion.substringAfterLast('/'),
-                                    fontSize = 10.sp,
-                                    maxLines = 1
-                                )
-                            }
+        Text(
+            "Model (free, verified OpenHands Cloud models)",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        // Read-only: the free-model set is decided by the cloud, so the user
+        // picks from the catalogue rather than typing a model that may not run.
+        OutlinedTextField(
+            value = modelDraft,
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("field_model")
+        )
+
+        // The catalogue is provider-scoped upstream; when it has not loaded yet
+        // offer at least the known-good default so the picker is never empty.
+        val suggestions = availableModels.ifEmpty { listOf(DEFAULT_OPENHANDS_MODEL) }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(suggestions, key = { it }) { suggestion ->
+                FilterChip(
+                    selected = modelDraft == suggestion,
+                    onClick = {
+                        onModelDraftChanged(suggestion)
+                        onModelChanged(suggestion)
+                    },
+                    label = {
+                        Text(
+                            suggestion.substringAfterLast('/'),
+                            fontSize = 10.sp,
+                            maxLines = 1
                         )
                     }
-                }
-            }
-            AgentKind.ACP -> {
-                Text(
-                    "ACP server command (the server manages its own LLM)",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = acpDraft,
-                    onValueChange = onAcpDraftChanged,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("field_acp_command")
                 )
             }
+        }
+        if (availableModels.isEmpty()) {
+            Text(
+                "Loading the model catalogue…",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

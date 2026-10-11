@@ -661,6 +661,7 @@ data class LlmModelDto(
     @param:Json(name = "name") val name: String = "",
     @param:Json(name = "provider") val provider: String? = null,
     @param:Json(name = "verified") val verified: Boolean = false,
+    @param:Json(name = "free") val free: Boolean = false,
     @param:Json(name = "hidden") val hidden: Boolean = false,
     @param:Json(name = "canonical") val canonical: String? = null
 )
@@ -869,7 +870,8 @@ data class OpenHandsConversation(
     val createdAt: Long,
     val updatedAt: Long,
     val cost: Double,
-    val lastMessage: String?
+    val lastMessage: String?,
+    val sandboxId: String? = null
 )
 
 data class AgentEvent(
