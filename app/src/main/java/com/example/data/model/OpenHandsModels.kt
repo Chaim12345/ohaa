@@ -871,7 +871,11 @@ data class OpenHandsConversation(
     val updatedAt: Long,
     val cost: Double,
     val lastMessage: String?,
-    val sandboxId: String? = null
+    val sandboxId: String? = null,
+    /** Runtime Agent Server base URL, e.g. https://xxx.prod-runtime.all-hands.dev. */
+    val conversationUrl: String? = null,
+    /** Ephemeral key for runtime calls; sent as X-Session-API-Key. */
+    val sessionApiKey: String? = null
 )
 
 data class AgentEvent(
@@ -2019,4 +2023,89 @@ data class ConversationInfoDto(
     // Spec fields intentionally not modeled (Moshi cannot codegen oneOf/discriminated
     // unions): workspace, agent, confirmation_policy, security_analyzer,
     // secret_registry, hook_config. Raw payloads still decode; those keys are dropped.
+)
+
+// ---------------------------------------------------------------------------
+// Runtime Agent Server API (per-conversation host from `conversation_url`)
+//
+// Canvas talks to two hosts: the Cloud App API (v1) for history/management and
+// the conversation's runtime Agent Server for live control. These models cover
+// the runtime half — sent with `X-Session-API-Key`, not the cloud bearer key.
+// ---------------------------------------------------------------------------
+
+/** Body of POST /conversations/{id}/events/respond_to_confirmation. */
+@JsonClass(generateAdapter = true)
+data class ConfirmationResponseRequestDto(
+    @param:Json(name = "accept") val accept: Boolean,
+    @param:Json(name = "reason") val reason: String = "User rejected the action."
+)
+
+/** Runtime POST responses are `{"success": true}`. */
+@JsonClass(generateAdapter = true)
+data class RuntimeSuccessDto(
+    @param:Json(name = "success") val success: Boolean = true
+)
+
+/** Runtime local conversation resource (GET /conversations/{id}). */
+@JsonClass(generateAdapter = true)
+data class RuntimeConversationDto(
+    @param:Json(name = "id") val id: String? = null,
+    @param:Json(name = "title") val title: String? = null,
+    @param:Json(name = "agent_state") val agentState: String? = null,
+    @param:Json(name = "execution_status") val executionStatus: String? = null,
+    @param:Json(name = "created_at") val createdAt: String? = null,
+    @param:Json(name = "updated_at") val updatedAt: String? = null,
+    @param:Json(name = "max_iterations") val maxIterations: Int? = null,
+    @param:Json(name = "persistence_dir") val persistenceDir: String? = null,
+    @param:Json(name = "current_model_id") val currentModelId: String? = null,
+    @param:Json(name = "stats") val stats: ConversationStatsDto? = null
+)
+
+/** Body of POST /conversations/{id}/switch_llm. */
+@JsonClass(generateAdapter = true)
+data class SwitchLlmRequestDto(
+    @param:Json(name = "model") val model: String? = null,
+    @param:Json(name = "profile_name") val profileName: String? = null
+)
+
+/** Body of POST /conversations/{id}/goal. */
+@JsonClass(generateAdapter = true)
+data class StartGoalRequestDto(
+    @param:Json(name = "goal") val goal: String
+)
+
+/** Body of POST /conversations/{id}/ask_agent. */
+@JsonClass(generateAdapter = true)
+data class AskAgentRequestDto(
+    @param:Json(name = "question") val question: String
+)
+
+/** Body of PATCH /conversations/{id}. */
+@JsonClass(generateAdapter = true)
+data class UpdateRuntimeConversationRequestDto(
+    @param:Json(name = "title") val title: String? = null,
+    @param:Json(name = "public") val public: Boolean? = null,
+    @param:Json(name = "tags") val tags: Map<String, String>? = null
+)
+
+/** VSCode URL from GET /vscode/url. */
+@JsonClass(generateAdapter = true)
+data class VSCodeUrlDto(
+    @param:Json(name = "url") val url: String? = null
+)
+
+/** GET /conversations/{id}/runtime — where the runtime actually lives. */
+@JsonClass(generateAdapter = true)
+data class ConversationRuntimeDto(
+    @param:Json(name = "url") val url: String? = null,
+    @param:Json(name = "host") val host: String? = null,
+    @param:Json(name = "session_api_key") val sessionApiKey: String? = null,
+    @param:Json(name = "status") val status: String? = null
+)
+
+/** One entry from GET /tools/catalog. */
+@JsonClass(generateAdapter = true)
+data class ToolInfoDto(
+    @param:Json(name = "name") val name: String = "",
+    @param:Json(name = "description") val description: String? = null
 )

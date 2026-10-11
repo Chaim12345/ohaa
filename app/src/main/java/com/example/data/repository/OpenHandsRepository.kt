@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import com.example.data.api.ApiClient
+import com.example.data.api.AgentServerApiService
 import com.example.data.api.ApiSettings
 import com.example.data.api.OpenHandsApiService
 import com.example.data.local.AppDatabase
@@ -12,6 +14,8 @@ import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
 import com.example.data.model.CreateSecretRequest
 import com.example.data.model.CreateConversationRequestDto
+import com.example.data.model.AskAgentRequestDto
+import com.example.data.model.ConfirmationResponseRequestDto
 import com.example.data.model.EventDto
 import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
@@ -26,15 +30,20 @@ import com.example.data.model.PendingMessageResponseDto
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
 import com.example.data.model.RenameProfileRequest
+import com.example.data.model.RuntimeConversationDto
+import com.example.data.model.RuntimeSuccessDto
 import com.example.data.model.SandboxDto
 import com.example.data.model.SandboxSpecDto
 import com.example.data.model.SecretDto
 import com.example.data.model.SendMessageRequest
 import com.example.data.model.SkillDto
+import com.example.data.model.StartGoalRequestDto
 import com.example.data.model.StartTaskDto
 import com.example.data.model.SuggestedTaskDto
+import com.example.data.model.SwitchLlmRequestDto
 import com.example.data.model.SwitchProfileRequest
 import com.example.data.model.UserInfoDto
+import com.example.data.model.VSCodeUrlDto
 import com.example.data.model.WebClientConfigDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -142,7 +151,11 @@ class OpenHandsRepository(
             call("search conversations") { api.searchConversations() }.map { page ->
                 val entities = page.items.map { it.toEntity(now()) }
                 if (entities.isNotEmpty()) conversationDao.insertConversations(entities)
-                entities.map { it.toDomain() }
+                entities.map { it.toDomain() }.also { list ->
+                    // Hydrate the runtime cache so live-control calls can reach
+                    // each conversation's Agent Server host immediately.
+                    list.forEach { cacheRuntimeConversation(it) }
+                }
             }
         }
 
@@ -413,6 +426,173 @@ class OpenHandsRepository(
             }.map { }
         }
 
+    // ---- Runtime Agent Server (live control, per-conversation host) --------------
+    //
+    // Canvas drives the conversation's runtime directly for control actions the
+    // cloud App API does not expose: responding to confirmations, the goal loop,
+    // interrupting a run, and the embedded VS Code server. The runtime host and
+    // its ephemeral key come from the conversation resource.
+
+    /** Collaborative lookup used by the runtime client: host + session key. */
+    private val runtimeConversations = ConcurrentHashMap<String, OpenHandsConversation>()
+
+    fun cacheRuntimeConversation(conversation: OpenHandsConversation) {
+        runtimeConversations[conversation.id] = conversation
+    }
+
+    /** Builds the runtime service for a conversation, or null if it has no runtime yet. */
+    private suspend fun runtimeFor(conversationId: String): Result<AgentServerApiService> {
+        val cached = runtimeConversations[conversationId]
+        if (cached?.conversationUrl != null && cached.sessionApiKey != null) {
+            return Result.success(ApiClient.forRuntime(cached.conversationUrl, cached.sessionApiKey))
+        }
+        // Not yet hydrated in this process — pull it from the local store.
+        val stored = conversationDao.getConversationById(conversationId).first()
+        val url = stored?.conversationUrl
+        val key = stored?.sessionApiKey
+        if (url.isNullOrBlank() || key.isNullOrBlank()) {
+            return Result.failure(
+                IllegalStateException(
+                    "This conversation has no live runtime yet — it may still be starting."
+                )
+            )
+        }
+        return Result.success(ApiClient.forRuntime(url, key))
+    }
+
+    private suspend fun <T : Any> runtimeCall(
+        conversationId: String,
+        block: suspend (AgentServerApiService) -> retrofit2.Response<T>
+    ): Result<T> {
+        val service = runtimeFor(conversationId).getOrElse { return Result.failure(it) }
+        return try {
+            val response = block(service)
+            val body = response.body()
+            when {
+                response.isSuccessful && body != null -> Result.success(body)
+                response.code() == 401 || response.code() == 403 ->
+                    Result.failure(CloudError.Unauthorized())
+                else -> Result.failure(
+                    CloudError.Api(
+                        response.code(),
+                        response.errorBody()?.string()?.take(300) ?: response.message()
+                    )
+                )
+            }
+        } catch (e: java.io.IOException) {
+            Result.failure(CloudError.Network(e))
+        } catch (e: Exception) {
+            Result.failure(CloudError.Parse(e))
+        }
+    }
+
+    /** Live local conversation record, including `agent_state`. */
+    suspend fun runtimeConversation(conversationId: String): Result<RuntimeConversationDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) {
+                it.getConversation(conversationId)
+            }
+        }
+
+    /** Accept or reject the agent's pending action (Canvas Confirm / Reject). */
+    suspend fun respondToConfirmation(
+        conversationId: String,
+        accept: Boolean,
+        reason: String? = null
+    ): Result<RuntimeSuccessDto> = withContext(Dispatchers.IO) {
+        runtimeCall(conversationId) {
+            it.respondToConfirmation(
+                conversationId,
+                ConfirmationResponseRequestDto(
+                    accept = accept,
+                    reason = reason?.takeIf { r -> r.isNotBlank() } ?: "User rejected the action."
+                )
+            )
+        }
+    }
+
+    /** Starts the goal loop with an objective. */
+    suspend fun startGoal(conversationId: String, goal: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) {
+                it.startGoal(conversationId, StartGoalRequestDto(goal.trim()))
+            }
+        }
+
+    suspend fun stopGoal(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.stopGoal(conversationId) }
+        }
+
+    suspend fun resumeGoal(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.resumeGoal(conversationId) }
+        }
+
+    /** Interrupts the running agent without ending the conversation. */
+    suspend fun interruptConversation(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.interruptConversation(conversationId) }
+        }
+
+    /** Pauses the agent loop on the runtime. */
+    suspend fun pauseConversation(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.pauseConversation(conversationId) }
+        }
+
+    /** Resumes a paused conversation's run loop. */
+    suspend fun runConversation(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.runConversation(conversationId) }
+        }
+
+    /** Switches the LLM of a running conversation on the runtime. */
+    suspend fun switchRuntimeLlm(
+        conversationId: String,
+        model: String? = null,
+        profileName: String? = null
+    ): Result<RuntimeSuccessDto> = withContext(Dispatchers.IO) {
+        runtimeCall(conversationId) {
+            it.switchLlm(
+                conversationId,
+                SwitchLlmRequestDto(
+                    model = model?.trim()?.ifEmpty { null },
+                    profileName = profileName?.trim()?.ifEmpty { null }
+                )
+            )
+        }
+    }
+
+    /** Asks the agent a side question (Canvas "Ask agent"). */
+    suspend fun askAgent(conversationId: String, question: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) {
+                it.askAgent(conversationId, AskAgentRequestDto(question.trim()))
+            }
+        }
+
+    /** Condenses the conversation history to free context. */
+    suspend fun condenseConversation(conversationId: String): Result<RuntimeSuccessDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.condenseConversation(conversationId) }
+        }
+
+    /** URL of the conversation's embedded VS Code server. */
+    suspend fun vscodeUrl(conversationId: String): Result<VSCodeUrlDto> =
+        withContext(Dispatchers.IO) {
+            runtimeCall(conversationId) { it.vscodeUrl() }
+        }
+
+    /** Reads a workspace file straight from the runtime (not the cloud file API). */
+    suspend fun readRuntimeFile(
+        conversationId: String,
+        filePath: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runtimeCall(conversationId) { it.readWorkspaceFile(conversationId, filePath) }
+            .map { it.string() }
+    }
+
     // ---- Sandboxes ---------------------------------------------------------------
 
     suspend fun searchSandboxes(limit: Int = 50): Result<List<SandboxDto>> =
@@ -604,7 +784,9 @@ class OpenHandsRepository(
         updatedAt = parseTimestamp(updatedAt) ?: parseTimestamp(createdAt) ?: fallbackTime,
         cost = cost,
         lastMessage = null,
-        sandboxId = sandboxId
+        sandboxId = sandboxId,
+        conversationUrl = conversationUrl,
+        sessionApiKey = sessionApiKey
     )
 
     private fun EventDto.toEntity(conversationId: String): AgentEventEntity {

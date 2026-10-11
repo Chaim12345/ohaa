@@ -58,6 +58,25 @@ class AuthInterceptor(private val apiKeyProvider: () -> String) : Interceptor {
     }
 }
 
+/**
+ * Runtime Agent Server auth. Each conversation's runtime is provisioned with an
+ * ephemeral key returned as `session_api_key`; the runtime accepts it only as
+ * `X-Session-API-Key` (never `Authorization: Bearer`).
+ */
+class SessionKeyInterceptor(private val keyProvider: () -> String) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val builder = chain.request().newBuilder()
+            .header("User-Agent", "OpenHands-Canvas-Android/2.0")
+            .header("Accept", "application/json")
+
+        val key = keyProvider().trim()
+        if (key.isNotEmpty()) {
+            builder.header("X-Session-API-Key", key)
+        }
+        return chain.proceed(builder.build())
+    }
+}
+
 object ApiClient {
 
     val moshi: Moshi = Moshi.Builder()
@@ -117,6 +136,40 @@ object ApiClient {
             cached?.let { if (it.first == config) return it.second }
             val service = create({ config.first }, { config.second }, enableLogging = false)
             cached = config to service
+            return service
+        }
+    }
+
+    // ---- Runtime Agent Server (per-conversation host) --------------------------
+
+    @Volatile
+    private var cachedRuntime: Triple<String, String, AgentServerApiService>? = null
+
+    /**
+     * Service for one conversation's runtime Agent Server, cached by
+     * (host, session key). The host comes from the conversation's
+     * `conversation_url` and the key from its `session_api_key`; both are
+     * per-conversation, so the cache is keyed on the pair.
+     */
+    fun forRuntime(runtimeUrl: String, sessionApiKey: String): AgentServerApiService {
+        val host = normalizeBaseUrl(runtimeUrl)
+        val key = sessionApiKey.trim()
+        cachedRuntime?.let { if (it.first == host && it.second == key) return it.third }
+        synchronized(this) {
+            cachedRuntime?.let { if (it.first == host && it.second == key) return it.third }
+            val client = OkHttpClient.Builder()
+                .addInterceptor(SessionKeyInterceptor { key })
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .writeTimeout(120, TimeUnit.SECONDS)
+                .build()
+            val service = Retrofit.Builder()
+                .baseUrl(host)
+                .client(client)
+                .addConverterFactory(MoshiConverterFactory.create(moshi))
+                .build()
+                .create(AgentServerApiService::class.java)
+            cachedRuntime = Triple(host, key, service)
             return service
         }
     }
