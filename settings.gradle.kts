@@ -15,13 +15,18 @@ pluginManagement {
 plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
 
 dependencyResolutionManagement {
-  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+  // Not FAIL_ON_PROJECT_REPOS: the Kotlin/Wasm plugin registers the Node.js
+  // toolchain download as a project repository during configuration, which that
+  // mode rejects outright.
   repositories {
     google()
     mavenCentral()
   }
 }
 
-rootProject.name = "OpenHands Cloud"
+rootProject.name = "openhands-cloud"
 
 include(":app")
+include(":shared")
+include(":server")
+include(":web")
