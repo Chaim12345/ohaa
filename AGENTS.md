@@ -22,6 +22,8 @@ Android app (Kotlin, Retrofit + Moshi) for OpenHands Cloud.
 - Wire conventions: optional query params are `= null` nullable (Retrofit omits nulls); batch ids params are `List<String>`; streaming/raw endpoints return `ResponseBody`; discriminated-union schemas (e.g. webhook `workspace`/`agent`) stay untyped or flat-typed since Moshi can't codegen `oneOf`.
 
 ## Gotchas learned
+- `UserInfoDto.secrets_store` and `agent_settings` are **objects**, not scalars (`{"provider_tokens":{}}`, `{"schema_version":6,"agent":"CodeActAgent","llm":{...}}`). Typing them as `String?` / `Map<String,String>?` fails the whole `users/me` decode and silently leaves Settings without an account. Same failure class as `launched_agent_profile` below — model open-schema fields as `JsonElement?`.
+- `GET .../events/search` sorts **ascending** by default and caps `limit` at 100. A long conversation therefore returns only its first page unless you pass `sort_order=TIMESTAMP_DESC` (then reverse). This is what made the Chat tab look like it only showed terminal output.
 - `AppConversationDto.launched_agent_profile` is an **object** (`agent_profile_id`, `revision`), not a string — typing it as String crashed Moshi with "Expected a string but was BEGIN_OBJECT". Regression test: `launched_agent_profile parses as object not string`.
 - Method-name collisions: org-profile endpoints vs user-profile endpoints share op names — org variants are prefixed `org*` (orgListProfiles, orgGetProfile, ...). The parity test maps by method name, so overloads break it.
 - Live API quirk: `GET /api/v1/app-conversations?ids=...` returns a **bare JSON array**, not a page object.
