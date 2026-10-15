@@ -1,0 +1,14 @@
+fix(web): proxy auth/CORS hardening, surface HTTP errors, wire branch picker + cloud settings
+
+- :server proxy: localhost-only CORS, explicit methods/headers, env-key precedence,
+  upstream non-2xx passed through verbatim, generic {"detail":"Bad gateway"} fallback
+- OpenHandsApiClient: configurable authHeaderName (X-Access-Token default; web passes
+  X-OpenHands-Key), expectSuccess + ResponseException surfaced as "HTTP <status>: <detail>"
+- repositories/search + branches/search: send required provider=github; query always present
+- New Task (web): repo selection triggers branch search, selected branch passed to
+  launchTask; bottom-nav icons + Cloud profiles/secrets settings wired
+- compileSdk 37.2 (minorApiLevel 2) for :app and :shared
+- Verified: 5-task gate build green; live UX chain vs. real API (list/detail/back,
+  prompt, repo->branch select, settings, error path)
+
+Co-authored-by: openhands <openhands@all-hands.dev>

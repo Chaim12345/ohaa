@@ -1,0 +1,731 @@
+diff --git a/app/src/main/java/com/example/data/model/OpenHandsModels.kt b/app/src/main/java/com/example/data/model/OpenHandsModels.kt
+index 0536769..3381e7a 100644
+--- a/app/src/main/java/com/example/data/model/OpenHandsModels.kt
++++ b/app/src/main/java/com/example/data/model/OpenHandsModels.kt
+@@ -2037,7 +2037,8 @@ data class ConversationInfoDto(
+ @JsonClass(generateAdapter = true)
+ data class ConfirmationResponseRequestDto(
+     @param:Json(name = "accept") val accept: Boolean,
+-    @param:Json(name = "reason") val reason: String = "User rejected the action."
++    /** Canvas sends only `{accept}`; `reason` is optional and omitted when null. */
++    @param:Json(name = "reason") val reason: String? = null
+ )
+ 
+ /** Runtime POST responses are `{"success": true}`. */
+diff --git a/app/src/main/java/com/example/data/repository/OpenHandsRepository.kt b/app/src/main/java/com/example/data/repository/OpenHandsRepository.kt
+index 9333a9a..4d1df16 100644
+--- a/app/src/main/java/com/example/data/repository/OpenHandsRepository.kt
++++ b/app/src/main/java/com/example/data/repository/OpenHandsRepository.kt
+@@ -505,7 +505,7 @@ class OpenHandsRepository(
+                 conversationId,
+                 ConfirmationResponseRequestDto(
+                     accept = accept,
+-                    reason = reason?.takeIf { r -> r.isNotBlank() } ?: "User rejected the action."
++                    reason = reason?.takeIf { r -> r.isNotBlank() }
+                 )
+             )
+         }
+diff --git a/app/src/main/java/com/example/ui/screens/SettingsScreen.kt b/app/src/main/java/com/example/ui/screens/SettingsScreen.kt
+index 731c0b8..acc467e 100644
+--- a/app/src/main/java/com/example/ui/screens/SettingsScreen.kt
++++ b/app/src/main/java/com/example/ui/screens/SettingsScreen.kt
+@@ -60,6 +60,7 @@ import com.example.data.settings.AgentProfile
+ import com.example.ui.components.AgentProfileDialog
+ import com.example.ui.components.ProfileSummaryCard
+ import com.example.ui.theme.CanvasBorder
++import com.example.ui.theme.CanvasDanger
+ import com.example.ui.theme.CanvasPrimary
+ import com.example.ui.theme.CanvasPrimaryDeep
+ import com.example.ui.theme.CanvasSuccess
+@@ -677,6 +678,11 @@ private fun AddSecretDialog(
+     var value by remember { mutableStateOf("") }
+     var description by remember { mutableStateOf("") }
+     var valueVisible by remember { mutableStateOf(false) }
++    // The cloud rejects anything outside [A-Za-z0-9_] with a 422; guard here so
++    // the failure is visible before the call instead of as a server error.
++    val nameValid = name.isNotBlank() && name.all { char ->
++        char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '_'
++    }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+         title = { Text("Add secret") },
+@@ -693,6 +699,7 @@ private fun AddSecretDialog(
+                     onValueChange = { name = it },
+                     label = { Text("Name") },
+                     singleLine = true,
++                    isError = name.isNotBlank() && !nameValid,
+                     shape = RoundedCornerShape(12.dp),
+                     colors = OutlinedTextFieldDefaults.colors(
+                         focusedBorderColor = CanvasPrimary,
+@@ -702,6 +709,12 @@ private fun AddSecretDialog(
+                         .fillMaxWidth()
+                         .testTag("field_secret_name")
+                 )
++                Text(
++                    "Letters, digits and underscores only (e.g. GITHUB_TOKEN).",
++                    fontSize = 11.sp,
++                    color = if (name.isNotBlank() && !nameValid) CanvasDanger
++                    else MaterialTheme.colorScheme.onSurfaceVariant
++                )
+                 Spacer(Modifier.height(8.dp))
+                 OutlinedTextField(
+                     value = value,
+@@ -746,7 +759,7 @@ private fun AddSecretDialog(
+         confirmButton = {
+             TextButton(
+                 onClick = { onCreate(name, value, description) },
+-                enabled = name.isNotBlank() && value.isNotBlank(),
++                enabled = nameValid && value.isNotBlank(),
+                 modifier = Modifier.testTag("btn_confirm_add_secret")
+             ) {
+                 Text("Add", color = CanvasPrimaryDeep)
+diff --git a/app/src/test/java/com/example/UiRegressionTest.kt b/app/src/test/java/com/example/UiRegressionTest.kt
+index 244d1ee..c9e6a83 100644
+--- a/app/src/test/java/com/example/UiRegressionTest.kt
++++ b/app/src/test/java/com/example/UiRegressionTest.kt
+@@ -1,6 +1,7 @@
+ package com.example
+ 
+ import androidx.compose.ui.test.assertIsDisplayed
++import androidx.compose.ui.test.assertIsEnabled
+ import androidx.compose.ui.test.assertIsNotEnabled
+ import androidx.compose.ui.test.assertTextEquals
+ import androidx.compose.ui.test.hasTestTag
+@@ -324,6 +325,56 @@ class UiRegressionTest {
+         assertTrue(deleted == "API_KEY")
+     }
+ 
++    @Test
++    fun `add secret dialog gates Add on a valid name and a non-blank value`() {
++        var created: Triple<String, String, String?>? = null
++        composeTestRule.setContent(settingsTestContent(
++            secrets = emptyList(),
++            onAddSecret = { n, v, d -> created = Triple(n, v, d) }
++        ))
++        composeTestRule.onNodeWithTag("settings_screen")
++            .performScrollToNode(hasTestTag("btn_add_secret"))
++        composeTestRule.onNodeWithTag("btn_add_secret").performClick()
++
++        // Empty form: nothing to submit.
++        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsNotEnabled()
++
++        // The cloud rejects anything outside [A-Za-z0-9_]; a hyphen must keep Add disabled.
++        composeTestRule.onNodeWithTag("field_secret_name").performTextInput("API-KEY")
++        composeTestRule.onNodeWithTag("field_secret_value").performTextInput("hunter2")
++        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsNotEnabled()
++
++        // A valid name enables Add, and confirming delivers name/value/description.
++        composeTestRule.onNodeWithTag("field_secret_name").performTextClearance()
++        composeTestRule.onNodeWithTag("field_secret_name").performTextInput("API_KEY")
++        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsEnabled()
++        composeTestRule.onNodeWithTag("btn_confirm_add_secret").performClick()
++        assertTrue(created == Triple("API_KEY", "hunter2", ""))
++    }
++
++    @Test
++    fun `delete secret confirmation names the specific secret`() {
++        var deleted: String? = null
++        composeTestRule.setContent(settingsTestContent(
++            secrets = listOf(
++                SecretDto(name = "API_KEY", description = "Deploy key"),
++                SecretDto(name = "OTHER_KEY")
++            ),
++            onDeleteSecret = { deleted = it }
++        ))
++        composeTestRule.onNodeWithTag("settings_screen")
++            .performScrollToNode(hasTestTag("btn_delete_secret_OTHER_KEY"))
++        composeTestRule.onNodeWithTag("btn_delete_secret_OTHER_KEY").performClick()
++        composeTestRule.onNodeWithText("Delete secret?").assertExists()
++        // The dialog must name the specific secret so a mis-tap can be caught.
++        composeTestRule
++            .onNodeWithText("'OTHER_KEY' will be removed from your account. This cannot be undone.")
++            .assertExists()
++        assertTrue(deleted == null)
++        composeTestRule.onNodeWithTag("btn_confirm_delete_secret").performClick()
++        assertTrue(deleted == "OTHER_KEY")
++    }
++
+     @Test
+     fun `cloud sections stay hidden in demo mode`() {
+         composeTestRule.setContent(settingsTestContent(isDemoMode = true))
+diff --git a/server/src/main/kotlin/com/example/server/Server.kt b/server/src/main/kotlin/com/example/server/Server.kt
+index d3ad3cb..717c172 100644
+--- a/server/src/main/kotlin/com/example/server/Server.kt
++++ b/server/src/main/kotlin/com/example/server/Server.kt
+@@ -23,10 +23,16 @@ import io.ktor.server.request.uri
+ import io.ktor.server.response.respondBytes
+ import io.ktor.server.response.respondText
+ import io.ktor.server.routing.get
++import io.ktor.server.routing.post
+ import io.ktor.server.routing.route
+ import io.ktor.server.routing.routing
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.JsonNull
+ import kotlinx.serialization.json.JsonPrimitive
+ import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.contentOrNull
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
+ import java.io.File
+ 
+ /**
+@@ -67,6 +73,17 @@ private fun isLocalhostOrigin(origin: String): Boolean {
+     return authority.substringBefore(':').lowercase() in setOf("localhost", "127.0.0.1")
+ }
+ 
++/**
++ * Runtime sandboxes live on `*.prod-runtime.all-hands.dev`, the App API on
++ * `app.all-hands.dev`. The tunnel refuses every other target, so it can never
++ * be turned into a generic SSRF hop against an internal address.
++ */
++private fun isAllowedRuntimeHost(url: String): Boolean {
++    if (!url.startsWith("https://")) return false
++    val hostname = url.substringAfter("://").substringBefore('/').substringBefore(':').lowercase()
++    return hostname == "all-hands.dev" || hostname.endsWith(".all-hands.dev")
++}
++
+ fun Application.module() {
+     val proxy = HttpClient()
+ 
+@@ -180,6 +197,67 @@ fun Application.module() {
+             }
+         }
+ 
++        // Runtime-sandbox tunnel, mirroring Canvas's local-agent-server
++        // `/api/cloud-proxy` envelope: the wasm client POSTs
++        // `{host, method, path, headers, body}` here because the browser cannot
++        // reach a per-conversation runtime host cross-origin. The envelope's
++        // headers (e.g. `X-Session-API-Key`) authenticate the forwarded call.
++        post("/api/cloud-proxy") {
++            val envelope = runCatching {
++                Json.parseToJsonElement(call.receiveText()).jsonObject
++            }.getOrNull()
++            val host = envelope?.get("host")?.jsonPrimitive?.contentOrNull
++            val path = envelope?.get("path")?.jsonPrimitive?.contentOrNull
++            val method = envelope?.get("method")?.jsonPrimitive?.contentOrNull
++                ?.let { HttpMethod.parse(it) }
++                ?: HttpMethod.Post
++
++            if (host == null || path == null || !isAllowedRuntimeHost(host)) {
++                call.respondText(
++                    text = """{"detail":"Invalid cloud-proxy envelope"}""",
++                    contentType = ContentType.Application.Json,
++                    status = HttpStatusCode.BadRequest
++                )
++                return@post
++            }
++
++            val upstreamHeaders = envelope["headers"]?.jsonObject
++                ?.mapNotNull { (name, value) ->
++                    value.jsonPrimitive.contentOrNull?.let { name to it }
++                }
++                .orEmpty()
++            val upstreamBody = envelope["body"]
++                ?.takeIf { it !is JsonNull }
++                ?.toString()
++
++            val target = "${host.trimEnd('/')}/${path.trimStart('/')}"
++            val upstream = proxy.request(target) {
++                this.method = method
++                header("Accept", "application/json")
++                upstreamHeaders.forEach { (name, value) -> header(name, value) }
++                upstreamBody?.let {
++                    contentType(ContentType.Application.Json)
++                    setBody(it)
++                }
++            }
++            val upstreamBytes = upstream.readRawBytes()
++
++            if (upstream.status.value !in 200..299) {
++                call.respondText(
++                    text = """{"detail":"Upstream request failed with HTTP ${upstream.status.value}"}""",
++                    contentType = ContentType.Application.Json,
++                    status = upstream.status
++                )
++                return@post
++            }
++
++            call.respondBytes(
++                bytes = upstreamBytes,
++                contentType = upstream.contentType(),
++                status = upstream.status
++            )
++        }
++
+         // The compiled Compose/Wasm bundle, served from the same origin.
+         staticFiles("/", webRoot)
+     }
+diff --git a/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt b/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
+index 20bf4d2..0653b9a 100644
+--- a/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
++++ b/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
+@@ -4,16 +4,21 @@ import com.example.data.model.AgentEvent
+ import com.example.data.model.AppConversationDto
+ import com.example.data.model.BranchDto
+ import com.example.data.model.CloudCredits
++import com.example.data.model.CloudProxyEnvelopeDto
++import com.example.data.model.ConfirmationResponseRequestDto
+ import com.example.data.model.CreateConversationRequestDto
++import com.example.data.model.CreateSecretRequest
+ import com.example.data.model.EventDto
+ import com.example.data.model.GitChangeDto
+ import com.example.data.model.GitDiffDto
+ import com.example.data.model.MessagePayloads
+ import com.example.data.model.LlmProfileDto
++import com.example.data.model.MessageResponseDto
+ import com.example.data.model.OpenHandsConversation
+ import com.example.data.model.PageDto
+ import com.example.data.model.PromptTemplate
+ import com.example.data.model.RepositoryDto
++import com.example.data.model.RuntimeSuccessDto
+ import com.example.data.model.SecretDto
+ import com.example.data.model.SendMessageRequest
+ import com.example.data.model.SkillDto
+@@ -37,10 +42,13 @@ import io.ktor.client.request.setBody
+ import io.ktor.client.statement.bodyAsText
+ import io.ktor.http.ContentType
+ import io.ktor.http.contentType
++import io.ktor.http.encodeURLPathPart
+ import io.ktor.serialization.kotlinx.json.json
+ import kotlinx.serialization.json.Json
+ import kotlinx.serialization.json.JsonObject
+ import kotlinx.serialization.json.contentOrNull
++import kotlinx.serialization.json.encodeToJsonElement
++import kotlinx.serialization.json.jsonObject
+ import kotlinx.serialization.json.jsonPrimitive
+ 
+ /**
+@@ -65,6 +73,16 @@ class OpenHandsApiClient(
+      * local proxy can forward it upstream as `Authorization: Bearer …`.
+      */
+     private val authHeaderName: String = "X-Access-Token",
++    /**
++     * Local endpoint that tunnels runtime-sandbox calls, using Canvas's
++     * cloud-proxy envelope `{host, method, path, headers, body}`.
++     *
++     * The browser cannot call a per-conversation `*.prod-runtime.all-hands.dev`
++     * host directly (CORS), so runtime calls are POSTed here and the server
++     * forwards them. The browser build points this at the :server root; the
++     * default keeps the Cloud App API base for direct callers.
++     */
++    private val cloudProxyUrl: String = "$apiBaseUrl/api/cloud-proxy",
+     private val http: HttpClient = defaultHttpClient()
+ ) {
+ 
+@@ -198,6 +216,43 @@ class OpenHandsApiClient(
+         }.body<Unit>()
+     }
+ 
++    /**
++     * Accept or reject the agent's pending action (the WaitingForInputCard).
++     *
++     * Wrapped in a cloud-proxy envelope because the runtime host is not
++     * CORS-reachable from the browser; `sessionApiKey` travels as the
++     * `X-Session-API-Key` header of the forwarded call, matching Canvas's
++     * `authMode: "session-api-key"` path.
++     */
++    suspend fun respondToConfirmation(
++        conversationId: String,
++        conversationUrl: String,
++        accept: Boolean,
++        reason: String? = null,
++        sessionApiKey: String? = null
++    ): Result<RuntimeSuccessDto> = call {
++        val request = ConfirmationResponseRequestDto(
++            accept = accept,
++            reason = reason?.takeIf { it.isNotBlank() }
++        )
++        http.post(cloudProxyUrl) {
++            auth()
++            contentType(ContentType.Application.Json)
++            setBody(
++                CloudProxyEnvelopeDto(
++                    host = conversationUrl.trimEnd('/'),
++                    method = "POST",
++                    path = "/api/conversations/${conversationId.encodeURLPathPart()}" +
++                        "/events/respond_to_confirmation",
++                    headers = sessionApiKey?.takeIf { it.isNotBlank() }
++                        ?.let { mapOf("X-Session-API-Key" to it) }
++                        .orEmpty(),
++                    body = json.encodeToJsonElement(request).jsonObject
++                )
++            )
++        }.body()
++    }
++
+     suspend fun renameConversation(conversationId: String, title: String): Result<Unit> = call {
+         http.patch("$apiBaseUrl/api/v1/app-conversations/$conversationId") {
+             auth()
+@@ -312,6 +367,36 @@ class OpenHandsApiClient(
+             .body<PageDto<SecretDto>>().items
+     }
+ 
++    /** POST /api/v1/secrets — the value is write-only and never returned. */
++    suspend fun createSecret(
++        name: String,
++        value: String,
++        description: String? = null
++    ): Result<MessageResponseDto> = call {
++        http.post("$apiBaseUrl/api/v1/secrets") {
++            auth()
++            contentType(ContentType.Application.Json)
++            setBody(
++                CreateSecretRequest(
++                    name = name.trim(),
++                    value = value,
++                    description = description?.trim()?.ifEmpty { null }
++                )
++            )
++        }.body()
++    }
++
++    /**
++     * DELETE /api/v1/secrets/{secret_id}.
++     *
++     * For custom secrets the spec's `secret_id` path value is the secret's
++     * *name*: `CustomSecretWithoutValue` has no id field, and Canvas deletes
++     * cloud secrets by name (`SecretsService.deleteSecret(name)`).
++     */
++    suspend fun deleteSecret(secretId: String): Result<MessageResponseDto> = call {
++        http.delete("$apiBaseUrl/api/v1/secrets/${secretId.encodeURLPathPart()}") { auth() }.body()
++    }
++
+     /**
+      * Templates the composer can seed from.
+      *
+diff --git a/shared/src/commonMain/kotlin/com/example/data/model/OpenHandsModels.kt b/shared/src/commonMain/kotlin/com/example/data/model/OpenHandsModels.kt
+index ec01b6d..81ae7c5 100644
+--- a/shared/src/commonMain/kotlin/com/example/data/model/OpenHandsModels.kt
++++ b/shared/src/commonMain/kotlin/com/example/data/model/OpenHandsModels.kt
+@@ -2034,7 +2034,8 @@ data class ConversationInfoDto(
+ @Serializable
+ data class ConfirmationResponseRequestDto(
+     @SerialName("accept") val accept: Boolean,
+-    @SerialName("reason") val reason: String = "User rejected the action."
++    /** Canvas sends only `{accept}`; `reason` is optional and omitted when null. */
++    @SerialName("reason") val reason: String? = null
+ )
+ 
+ /** Runtime POST responses are `{"success": true}`. */
+@@ -2043,6 +2044,23 @@ data class RuntimeSuccessDto(
+     @SerialName("success") val success: Boolean = true
+ )
+ 
++/**
++ * Envelope for the local server's `/api/cloud-proxy` tunnel (Canvas wire format).
++ *
++ * A runtime call is wrapped as `{host, method, path, headers, body}` and POSTed
++ * to the local server, which forwards it to [host] and relays the response with
++ * its status. `headers` carries the runtime auth, e.g. `X-Session-API-Key`.
++ */
++@Serializable
++data class CloudProxyEnvelopeDto(
++    @SerialName("host") val host: String,
++    @SerialName("method") val method: String,
++    @SerialName("path") val path: String,
++    @SerialName("headers") val headers: Map<String, String> = emptyMap(),
++    @SerialName("body") val body: JsonObject? = null,
++    @SerialName("timeout_seconds") val timeoutSeconds: Int? = null
++)
++
+ /** Runtime local conversation resource (GET /conversations/{id}). */
+ @Serializable
+ data class RuntimeConversationDto(
+diff --git a/shared/src/commonMain/kotlin/com/example/ui/screens/ConversationScreen.kt b/shared/src/commonMain/kotlin/com/example/ui/screens/ConversationScreen.kt
+index 591c6d2..4b77cb8 100644
+--- a/shared/src/commonMain/kotlin/com/example/ui/screens/ConversationScreen.kt
++++ b/shared/src/commonMain/kotlin/com/example/ui/screens/ConversationScreen.kt
+@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Refresh
+ import androidx.compose.material.icons.filled.Sync
+ import androidx.compose.material.icons.filled.Terminal
+ import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Button
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.DropdownMenu
+ import androidx.compose.material3.DropdownMenuItem
+@@ -37,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+ import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
+ import androidx.compose.material3.OutlinedTextField
+ import androidx.compose.material3.OutlinedTextFieldDefaults
+ import androidx.compose.material3.Tab
+@@ -129,7 +131,13 @@ fun ConversationScreen(
+     onReadFile: (String) -> Unit = {},
+     skills: List<String> = emptyList(),
+     onLoadSkills: () -> Unit = {},
+-    onExportTrajectory: () -> Unit = {}
++    onExportTrajectory: () -> Unit = {},
++    /** True while an accept/reject for the pending action is in flight. */
++    isResponding: Boolean = false,
++    /** Set once the pending confirmation was answered, so the card stops showing. */
++    waitingInputResolved: Boolean = false,
++    /** Accept (`true`) or reject (`false`) the agent's pending action. */
++    onRespondConfirmation: (Boolean) -> Unit = {}
+ ) {
+     var tab by remember(conversation?.id) { mutableStateOf(ConversationTab.CHAT) }
+     var showProfileDialog by remember { mutableStateOf(false) }
+@@ -195,7 +203,10 @@ fun ConversationScreen(
+                         com.example.data.model.ConversationUiStatus.WAITING_INPUT,
+                     webBaseUrl = webBaseUrl,
+                     conversationId = conversation?.id,
+-                    onSendMessage = onSendMessage
++                    onSendMessage = onSendMessage,
++                    isResponding = isResponding,
++                    waitingInputResolved = waitingInputResolved,
++                    onRespondConfirmation = onRespondConfirmation
+                 )
+                 ConversationTab.FILES -> FilesTab(
+                     files = files,
+@@ -414,7 +425,10 @@ private fun ChatTab(
+     isWaiting: Boolean,
+     webBaseUrl: String,
+     conversationId: String?,
+-    onSendMessage: (String) -> Unit
++    onSendMessage: (String) -> Unit,
++    isResponding: Boolean,
++    waitingInputResolved: Boolean,
++    onRespondConfirmation: (Boolean) -> Unit
+ ) {
+     val listState = rememberLazyListState()
+     var composer by remember { mutableStateOf("") }
+@@ -452,8 +466,16 @@ private fun ChatTab(
+             items(renderableEvents, key = { it.id }) { event ->
+                 TranscriptEvent(event)
+             }
+-            if (isWaiting) {
+-                item { WaitingForInputCard(webBaseUrl, conversationId, uriHandler) }
++            if (isWaiting && !waitingInputResolved) {
++                item {
++                    WaitingForInputCard(
++                        webBaseUrl = webBaseUrl,
++                        conversationId = conversationId,
++                        uriHandler = uriHandler,
++                        isResponding = isResponding,
++                        onRespond = onRespondConfirmation
++                    )
++                }
+             }
+         }
+ 
+@@ -509,7 +531,9 @@ private fun ChatTab(
+ private fun WaitingForInputCard(
+     webBaseUrl: String,
+     conversationId: String?,
+-    uriHandler: androidx.compose.ui.platform.UriHandler
++    uriHandler: androidx.compose.ui.platform.UriHandler,
++    isResponding: Boolean,
++    onRespond: (Boolean) -> Unit
+ ) {
+     CanvasCard(accent = CanvasColors.warning) {
+         Text("The agent is waiting on you", fontWeight = FontWeight.Medium)
+@@ -519,8 +543,31 @@ private fun WaitingForInputCard(
+             style = MaterialTheme.typography.bodyMedium,
+             color = MaterialTheme.colorScheme.onSurfaceVariant
+         )
++        Spacer(Modifier.height(Spacing.sm))
++        Row(verticalAlignment = Alignment.CenterVertically) {
++            Button(
++                onClick = { onRespond(true) },
++                enabled = !isResponding,
++                shape = Shapes.medium,
++                modifier = Modifier.testTag("btn_accept_confirmation")
++            ) { Text("Accept") }
++            Spacer(Modifier.width(Spacing.sm))
++            OutlinedButton(
++                onClick = { onRespond(false) },
++                enabled = !isResponding,
++                shape = Shapes.medium,
++                modifier = Modifier.testTag("btn_reject_confirmation")
++            ) { Text("Reject") }
++            if (isResponding) {
++                Spacer(Modifier.width(Spacing.sm))
++                CircularProgressIndicator(
++                    Modifier.size(Sizes.iconSmall),
++                    strokeWidth = 2.dp
++                )
++            }
++        }
+         if (conversationId != null) {
+-            Spacer(Modifier.height(Spacing.sm))
++            Spacer(Modifier.height(Spacing.xs))
+             TextButton(onClick = {
+                 uriHandler.openUri("${webBaseUrl.trimEnd('/')}/conversations/$conversationId")
+             }) { Text("Open in web app") }
+diff --git a/shared/src/commonMain/kotlin/com/example/ui/screens/SettingsScreen.kt b/shared/src/commonMain/kotlin/com/example/ui/screens/SettingsScreen.kt
+index e366eec..c94a686 100644
+--- a/shared/src/commonMain/kotlin/com/example/ui/screens/SettingsScreen.kt
++++ b/shared/src/commonMain/kotlin/com/example/ui/screens/SettingsScreen.kt
+@@ -634,6 +634,11 @@ private fun AddSecretDialog(
+     var value by remember { mutableStateOf("") }
+     var description by remember { mutableStateOf("") }
+     var valueVisible by remember { mutableStateOf(false) }
++    // The cloud rejects anything outside [A-Za-z0-9_] with a 422; guard here so
++    // the failure is visible before the call instead of as a server error.
++    val nameValid = name.isNotBlank() && name.all { char ->
++        char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '_'
++    }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+         title = { Text("Add secret") },
+@@ -650,6 +655,7 @@ private fun AddSecretDialog(
+                     onValueChange = { name = it },
+                     label = { Text("Name") },
+                     singleLine = true,
++                    isError = name.isNotBlank() && !nameValid,
+                     shape = Shapes.medium,
+                     colors = OutlinedTextFieldDefaults.colors(
+                         focusedBorderColor = CanvasPrimary,
+@@ -659,6 +665,12 @@ private fun AddSecretDialog(
+                         .fillMaxWidth()
+                         .testTag("field_secret_name")
+                 )
++                Text(
++                    "Letters, digits and underscores only (e.g. GITHUB_TOKEN).",
++                    style = MaterialTheme.typography.labelSmall,
++                    color = if (name.isNotBlank() && !nameValid) CanvasColors.danger
++                    else MaterialTheme.colorScheme.onSurfaceVariant
++                )
+                 Spacer(Modifier.height(Spacing.sm))
+                 OutlinedTextField(
+                     value = value,
+@@ -705,7 +717,7 @@ private fun AddSecretDialog(
+         confirmButton = {
+             TextButton(
+                 onClick = { onCreate(name, value, description) },
+-                enabled = name.isNotBlank() && value.isNotBlank(),
++                enabled = nameValid && value.isNotBlank(),
+                 modifier = Modifier.testTag("btn_confirm_add_secret")
+             ) { Text("Add", color = CanvasPrimaryDeep) }
+         },
+diff --git a/web/src/wasmJsMain/kotlin/com/example/web/Main.kt b/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
+index 23eff9d..57208d4 100644
+--- a/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
++++ b/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
+@@ -58,7 +58,10 @@ fun WebRoot() {
+             OpenHandsApiClient(
+                 apiBaseUrl = "/cloud",
+                 apiKey = { BrowserSession.apiKey() },
+-                authHeaderName = "X-OpenHands-Key"
++                authHeaderName = "X-OpenHands-Key",
++                // Runtime-sandbox tunnel: same-origin call to the server's
++                // cloud-proxy envelope endpoint (see Server.kt).
++                cloudProxyUrl = "/api/cloud-proxy"
+             )
+         }
+         val state = rememberWebAppState(api)
+@@ -192,7 +195,9 @@ private fun AppShell(state: WebAppState) {
+                     },
+                     onClearCache = {},
+                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
+-                    onRefreshCloudSettings = state::refreshCloudSettings
++                    onRefreshCloudSettings = state::refreshCloudSettings,
++                    onAddSecret = state::addSecret,
++                    onDeleteSecret = state::deleteSecret
+                 )
+             }
+ 
+@@ -233,7 +238,10 @@ private fun ConversationHost(state: WebAppState) {
+         onLoadFiles = { state.loadFiles() },
+         onReadFile = state::readFile,
+         skills = state.skills,
+-        onLoadSkills = state::loadSkills
++        onLoadSkills = state::loadSkills,
++        isResponding = state.isResponding,
++        waitingInputResolved = state.waitingInputResolved,
++        onRespondConfirmation = state::respondToConfirmation
+     )
+ }
+ 
+diff --git a/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt b/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
+index c02148f..910de33 100644
+--- a/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
++++ b/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
+@@ -74,6 +74,15 @@ class WebAppState(
+     var events by mutableStateOf<List<AgentEvent>>(emptyList())
+     var isSending by mutableStateOf(false)
+ 
++    /** True while the accept/reject call for a pending action is in flight. */
++    var isResponding by mutableStateOf(false)
++
++    /**
++     * Set once this conversation's pending confirmation was answered, so the
++     * waiting card disappears before the refreshed status arrives.
++     */
++    var waitingInputResolved by mutableStateOf(false)
++
+     var gitDiff by mutableStateOf<GitDiffDto?>(null)
+     var isGitLoading by mutableStateOf(false)
+     var files by mutableStateOf<List<String>>(emptyList())
+@@ -126,6 +135,20 @@ class WebAppState(
+         }
+     }
+ 
++    /** Creates a secret, then reloads the list so the new row appears. */
++    fun addSecret(name: String, value: String, description: String?) {
++        scope.launch {
++            onResult(api.createSecret(name, value, description)) { refreshCloudSettings() }
++        }
++    }
++
++    /** Deletes a secret by name — the API's `secret_id` for custom secrets. */
++    fun deleteSecret(secretName: String) {
++        scope.launch {
++            onResult(api.deleteSecret(secretName)) { refreshCloudSettings() }
++        }
++    }
++
+     fun search(query: String) {
+         searchQuery = query
+         scope.launch {
+@@ -239,6 +262,7 @@ class WebAppState(
+ 
+     fun openConversation(id: String) {
+         selectedConversationId = id
++        waitingInputResolved = false
+         refreshEvents()
+     }
+ 
+@@ -261,8 +285,41 @@ class WebAppState(
+         }
+     }
+ 
++    /**
++     * Accept or reject the agent's pending action from the waiting-input card.
++     *
++     * Needs the conversation's runtime host and session key, which are only
++     * populated while its sandbox is running.
++     */
++    fun respondToConfirmation(accept: Boolean) {
++        val conversation = selectedConversation ?: return
++        val conversationUrl = conversation.conversationUrl
++        if (conversationUrl.isNullOrBlank()) {
++            lastError = "This conversation has no live runtime; resume its sandbox and retry."
++            return
++        }
++        scope.launch {
++            isResponding = true
++            val responded = api.respondToConfirmation(
++                conversationId = conversation.id,
++                conversationUrl = conversationUrl,
++                accept = accept,
++                sessionApiKey = conversation.sessionApiKey
++            )
++            onResult(responded) {
++                waitingInputResolved = true
++                refreshEvents()
++            }
++            if (responded.isSuccess) {
++                onResult(api.listConversations()) { conversations = it }
++            }
++            isResponding = false
++        }
++    }
++
+     fun closeConversation() {
+         selectedConversationId = null
++        waitingInputResolved = false
+         events = emptyList()
+         gitDiff = null
+         files = emptyList()

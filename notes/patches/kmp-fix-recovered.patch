@@ -1,0 +1,407 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index dd30657..3d19006 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -8,7 +8,7 @@ plugins {
+ 
+ android {
+   namespace = "com.example"
+-  compileSdk { version = release(36) { minorApiLevel = 1 } }
++  compileSdk { version = release(37) { minorApiLevel = 2 } }
+ 
+   defaultConfig {
+     applicationId = "com.aistudio.openhandscloud.nxvtq"
+diff --git a/server/src/main/kotlin/com/example/server/Server.kt b/server/src/main/kotlin/com/example/server/Server.kt
+index 0cb82c5..d3ad3cb 100644
+--- a/server/src/main/kotlin/com/example/server/Server.kt
++++ b/server/src/main/kotlin/com/example/server/Server.kt
+@@ -39,8 +39,8 @@ import java.io.File
+  *     token server-side. The key never reaches the browser, and the wasm client
+  *     calls exactly one origin: this server.
+  *
+- * Nothing here fabricates responses — a request the upstream rejects is returned
+- * to the caller with the upstream status and body intact.
++ * A request the upstream rejects keeps its status but gets a generic JSON body,
++ * and a transport failure answers 502 generically — no exception detail leaks.
+  */
+ fun main() {
+     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+@@ -50,26 +50,48 @@ fun main() {
+ private val upstreamBase: String =
+     System.getenv("OPENHANDS_BASE_URL")?.trimEnd('/') ?: "https://app.all-hands.dev"
+ 
+-/** Server-side default token; a per-request `X-OpenHands-Key` header overrides it. */
++/** Server-side token; a per-request `X-OpenHands-Key` header is used only when this is unset. */
+ private val defaultApiKey: String? = System.getenv("OPENHANDS_API_KEY")
+ 
+ /** Directory holding the wasm distribution; defaults to the Gradle build output. */
+ private val webRoot: File =
+     File(System.getenv("WEB_ROOT") ?: "web/build/dist/wasmJs/productionExecutable")
+ 
++/**
++ * The only origins CORS accepts: `localhost` and `127.0.0.1`, on any port, so a
++ * dev server binding a random port still works while every other origin is refused.
++ */
++private fun isLocalhostOrigin(origin: String): Boolean {
++    if (!origin.startsWith("http://") && !origin.startsWith("https://")) return false
++    val authority = origin.substringAfter("://").substringBefore('/')
++    return authority.substringBefore(':').lowercase() in setOf("localhost", "127.0.0.1")
++}
++
+ fun Application.module() {
+     val proxy = HttpClient()
+ 
+     install(CallLogging)
+     install(CORS) {
+-        anyHost()
+-        allowHeaders { true }
++        // Localhost only, on whatever port a dev server happens to bind.
++        allowOrigins { origin -> isLocalhostOrigin(origin) }
+         allowMethod(HttpMethod.Options)
++        allowMethod(HttpMethod.Get)
++        allowMethod(HttpMethod.Post)
++        allowMethod(HttpMethod.Put)
++        allowMethod(HttpMethod.Delete)
++        allowMethod(HttpMethod.Patch)
++        allowHeader("Content-Type")
++        allowHeader("X-OpenHands-Key")
++        allowHeader("Authorization")
++        allowHeader("X-Access-Token")
++        allowHeader("Accept")
+     }
+     install(StatusPages) {
+-        exception<Throwable> { call, cause ->
++        // Connection failures answer 502 with a fixed body: exception messages
++        // (host, port, cause) must not reach the caller.
++        exception<Throwable> { call, _ ->
+             call.respondText(
+-                text = """{"detail":${JsonPrimitive(cause.message ?: "proxy error")}}""",
++                text = """{"detail":"Bad gateway"}""",
+                 contentType = ContentType.Application.Json,
+                 status = HttpStatusCode.BadGateway
+             )
+@@ -107,8 +129,11 @@ fun Application.module() {
+                     if (query.isNotEmpty()) append('?').append(query)
+                 }
+ 
+-                val apiKey = call.request.headers["X-OpenHands-Key"]?.takeIf { it.isNotBlank() }
+-                    ?: defaultApiKey
++                // The env key wins when present; the browser-supplied key only
++                // fills the gap for a server without its own credential.
++                val browserKey =
++                    call.request.headers["X-OpenHands-Key"]?.takeIf { it.isNotBlank() }
++                val apiKey = defaultApiKey?.takeIf { it.isNotBlank() } ?: browserKey
+                 if (apiKey.isNullOrBlank()) {
+                     call.respondText(
+                         text = """{"detail":"No API key. Set OPENHANDS_API_KEY on the server or provide one in Settings."}""",
+@@ -134,9 +159,21 @@ fun Application.module() {
+                         setBody(it)
+                     }
+                 }
++                val upstreamBytes = upstream.readRawBytes()
++
++                if (upstream.status.value !in 200..299) {
++                    // Status passes through; the payload stays generic so no
++                    // upstream error detail is echoed to the caller.
++                    call.respondText(
++                        text = """{"detail":"Upstream request failed with HTTP ${upstream.status.value}"}""",
++                        contentType = ContentType.Application.Json,
++                        status = upstream.status
++                    )
++                    return@handle
++                }
+ 
+                 call.respondBytes(
+-                    bytes = upstream.readRawBytes(),
++                    bytes = upstreamBytes,
+                     contentType = upstream.contentType(),
+                     status = upstream.status
+                 )
+diff --git a/shared/build.gradle.kts b/shared/build.gradle.kts
+index d073273..cc507e8 100644
+--- a/shared/build.gradle.kts
++++ b/shared/build.gradle.kts
+@@ -14,7 +14,7 @@ kotlin {
+     // declared through `androidLibrary` rather than the old `androidTarget()`.
+     androidLibrary {
+         namespace = "com.example.shared"
+-        compileSdk = 36
++        compileSdk { version = release(37) { minorApiLevel = 2 } }
+         minSdk = 24
+ 
+         @OptIn(ExperimentalKotlinGradlePluginApi::class)
+diff --git a/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt b/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
+index b356efb..46dcf99 100644
+--- a/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
++++ b/shared/src/commonMain/kotlin/com/example/data/api/OpenHandsApiClient.kt
+@@ -25,6 +25,7 @@ import com.example.data.model.UserInfoDto
+ import com.example.util.toEpochMillis
+ import io.ktor.client.HttpClient
+ import io.ktor.client.call.body
++import io.ktor.client.plugins.ResponseException
+ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+ import io.ktor.client.request.delete
+ import io.ktor.client.request.get
+@@ -33,6 +34,7 @@ import io.ktor.client.request.parameter
+ import io.ktor.client.request.patch
+ import io.ktor.client.request.post
+ import io.ktor.client.request.setBody
++import io.ktor.client.statement.bodyAsText
+ import io.ktor.http.ContentType
+ import io.ktor.http.contentType
+ import io.ktor.serialization.kotlinx.json.json
+@@ -45,31 +47,51 @@ import kotlinx.serialization.json.jsonPrimitive
+  * The API surface shared by the Android app and the web client.
+  *
+  * Everything here is a real call against the OpenHands Cloud REST API; there is
+- * no demo or stubbed path. The two targets differ only in [apiBaseUrl]:
+- *  - Android talks to `https://app.all-hands.dev` directly, because the key is
+- *    stored on the device and Android has no same-origin restriction.
+- *  - The browser talks to its own origin, which the Ktor backend proxies to
+- *    app.all-hands.dev. That keeps the API key off the page's network tab and
+- *    sidesteps CORS entirely.
++ * no demo or stubbed path. The targets differ only in [apiBaseUrl] and the header
++ * carrying the key ([authHeaderName]):
++ *  - Android talks to `https://app.all-hands.dev` directly with `X-Access-Token`,
++ *    because the key is stored on the device and Android has no same-origin
++ *    restriction.
++ *  - The browser talks to its own origin with `X-OpenHands-Key`, which the Ktor
++ *    backend forwards upstream as `Authorization: Bearer …`. That keeps the API
++ *    key off the page's network tab and sidesteps CORS entirely.
+  */
+ class OpenHandsApiClient(
+     private val apiBaseUrl: String,
+     private val apiKey: () -> String,
++    /**
++     * Wire header carrying the key. Android talks to app.all-hands.dev directly
++     * with `X-Access-Token`; the browser build passes `X-OpenHands-Key` so the
++     * local proxy can forward it upstream as `Authorization: Bearer …`.
++     */
++    private val authHeaderName: String = "X-Access-Token",
+     private val http: HttpClient = defaultHttpClient()
+ ) {
+ 
+     private fun io.ktor.client.request.HttpRequestBuilder.auth() {
+         val key = apiKey().trim()
+-        if (key.isNotEmpty()) header("Authorization", "Bearer $key")
++        if (key.isNotEmpty()) header(authHeaderName, key)
+     }
+ 
+     private suspend inline fun <reified T> call(block: () -> T): Result<T> =
+         try {
+             Result.success(block())
++        } catch (e: ResponseException) {
++            // Non-2xx: never parse an error body as success, and never surface
++            // Ktor's URL-bearing message — status plus a short body excerpt.
++            Result.failure(IllegalStateException(httpError(e)))
+         } catch (e: Throwable) {
+             Result.failure(e)
+         }
+ 
++    /** `HTTP 401: <body>` — first ~200 chars only; no URL, no stack trace. */
++    private suspend fun httpError(e: ResponseException): String {
++        val body = runCatching { e.response.bodyAsText() }.getOrDefault("").ifEmpty {
++            e.message?.substringAfter(". Text: \"", "")?.removeSuffix("\"").orEmpty()
++        }
++        return "HTTP ${e.response.status.value}: ${body.take(200)}"
++    }
++
+     /** GET /api/service/health — used by Settings to test the connection. */
+     suspend fun checkHealth(): Result<String> = call {
+         http.get("$apiBaseUrl/api/service/health") { auth() }.body()
+@@ -328,6 +350,9 @@ class OpenHandsApiClient(
+         }
+ 
+         fun defaultHttpClient(): HttpClient = HttpClient {
++            // Reject non-2xx before deserialization, so an error body can never
++            // be decoded as a success payload.
++            expectSuccess = true
+             install(ContentNegotiation) { json(json) }
+         }
+     }
+diff --git a/web/src/wasmJsMain/kotlin/com/example/web/Main.kt b/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
+index ea58b95..23eff9d 100644
+--- a/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
++++ b/web/src/wasmJsMain/kotlin/com/example/web/Main.kt
+@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.fillMaxSize
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Add
++import androidx.compose.material.icons.filled.Dashboard
++import androidx.compose.material.icons.filled.List
++import androidx.compose.material.icons.filled.Settings
++import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.NavigationBar
+ import androidx.compose.material3.NavigationBarItem
+@@ -51,7 +57,8 @@ fun WebRoot() {
+         val api = remember {
+             OpenHandsApiClient(
+                 apiBaseUrl = "/cloud",
+-                apiKey = { BrowserSession.apiKey() }
++                apiKey = { BrowserSession.apiKey() },
++                authHeaderName = "X-OpenHands-Key"
+             )
+         }
+         val state = rememberWebAppState(api)
+@@ -80,7 +87,17 @@ private fun AppShell(state: WebAppState) {
+                     NavigationBarItem(
+                         selected = state.tab == tab,
+                         onClick = { state.tab = tab },
+-                        icon = {},
++                        icon = {
++                            Icon(
++                                imageVector = when (tab) {
++                                    AppTab.DASHBOARD -> Icons.Default.Dashboard
++                                    AppTab.CONVERSATIONS -> Icons.Default.List
++                                    AppTab.NEW_TASK -> Icons.Default.Add
++                                    AppTab.SETTINGS -> Icons.Default.Settings
++                                },
++                                contentDescription = tab.label
++                            )
++                        },
+                         label = { Text(tab.label) }
+                     )
+                 }
+@@ -128,8 +145,8 @@ private fun AppShell(state: WebAppState) {
+                     isDemoMode = false,
+                     activeProfile = state.activeProfile,
+                     repoResults = state.repoResults,
+-                    branchResults = emptyList(),
+-                    selectedBranch = "",
++                    branchResults = state.branchResults,
++                    selectedBranch = state.selectedBranch,
+                     isSearchingRepos = state.isSearchingRepos,
+                     onPromptChanged = { state.promptText = it },
+                     onRepoChanged = state::searchRepositories,
+@@ -139,8 +156,10 @@ private fun AppShell(state: WebAppState) {
+                     onSelectRepository = { repo ->
+                         state.repoText = repo.fullName
+                         state.repoResults = emptyList()
++                        state.selectedBranch = ""
++                        state.searchBranches("")
+                     },
+-                    onSelectBranch = {},
++                    onSelectBranch = { state.selectedBranch = it },
+                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
+                     suggestedTasks = state.suggestedTasks,
+                     onLoadSuggestedTasks = state::loadTemplates,
+@@ -157,6 +176,9 @@ private fun AppShell(state: WebAppState) {
+                     isDemoMode = false,
+                     activeProfile = state.activeProfile,
+                     account = state.account,
++                    cloudProfiles = state.cloudProfiles,
++                    secrets = state.secrets,
++                    isCloudSettingsLoading = state.isCloudSettingsLoading,
+                     onApiKeyChanged = { BrowserSession.setApiKey(it) },
+                     onBaseUrlChanged = {},
+                     onSaveConfig = {
+@@ -170,7 +192,7 @@ private fun AppShell(state: WebAppState) {
+                     },
+                     onClearCache = {},
+                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
+-                    onRefreshCloudSettings = state::refresh
++                    onRefreshCloudSettings = state::refreshCloudSettings
+                 )
+             }
+ 
+diff --git a/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt b/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
+index daa5a40..c02148f 100644
+--- a/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
++++ b/web/src/wasmJsMain/kotlin/com/example/web/WebAppState.kt
+@@ -9,11 +9,14 @@ import androidx.compose.runtime.setValue
+ import com.example.data.api.OpenHandsApiClient
+ import com.example.data.api.toAgentEvent
+ import com.example.data.model.AgentEvent
++import com.example.data.model.BranchDto
+ import com.example.data.model.ConversationUiStatus
+ import com.example.data.model.GitDiffDto
++import com.example.data.model.LlmProfileDto
+ import com.example.data.model.OpenHandsConversation
+ import com.example.data.model.PromptTemplate
+ import com.example.data.model.RepositoryDto
++import com.example.data.model.SecretDto
+ import com.example.data.model.SuggestedTaskDto
+ import com.example.ui.viewmodel.SandboxUiState
+ import com.example.data.model.UserInfoDto
+@@ -51,6 +54,10 @@ class WebAppState(
+     var repoResults by mutableStateOf<List<RepositoryDto>>(emptyList())
+     var isSearchingRepos by mutableStateOf(false)
+ 
++    var branchResults by mutableStateOf<List<BranchDto>>(emptyList())
++    var selectedBranch by mutableStateOf("")
++    var isSearchingBranches by mutableStateOf(false)
++
+     var launchStage by mutableStateOf(LaunchStage.IDLE)
+     var launchStatusText by mutableStateOf<String?>(null)
+     var selectedConversationId by mutableStateOf<String?>(null)
+@@ -58,6 +65,11 @@ class WebAppState(
+     var activeProfile by mutableStateOf(AgentProfile())
+     var credits by mutableStateOf<Double?>(null)
+ 
++    // Settings: cloud profiles and secrets, loaded from the live API.
++    var cloudProfiles by mutableStateOf<List<LlmProfileDto>>(emptyList())
++    var secrets by mutableStateOf<List<SecretDto>>(emptyList())
++    var isCloudSettingsLoading by mutableStateOf(false)
++
+     /** Transcript of [selectedConversationId], refreshed from the events API. */
+     var events by mutableStateOf<List<AgentEvent>>(emptyList())
+     var isSending by mutableStateOf(false)
+@@ -93,6 +105,7 @@ class WebAppState(
+             onResult(api.getCredits()) { credits = it.credits }
+             onResult(api.getUserInfo()) { account = it }
+             isRefreshing = false
++            refreshCloudSettings()
+         }
+     }
+ 
+@@ -103,6 +116,16 @@ class WebAppState(
+         }
+     }
+ 
++    /** Cloud profiles and secrets backing the Settings screen. */
++    fun refreshCloudSettings() {
++        scope.launch {
++            isCloudSettingsLoading = true
++            onResult(api.listProfiles()) { cloudProfiles = it }
++            onResult(api.listSecrets()) { secrets = it }
++            isCloudSettingsLoading = false
++        }
++    }
++
+     fun search(query: String) {
+         searchQuery = query
+         scope.launch {
+@@ -140,6 +163,22 @@ class WebAppState(
+         }
+     }
+ 
++    /** Branches for the selected repo; empty repo ⇒ empty branch list. */
++    fun searchBranches(query: String) {
++        val repository = repoText.trim()
++        if (repository.isEmpty()) {
++            branchResults = emptyList()
++            return
++        }
++        scope.launch {
++            isSearchingBranches = true
++            onResult(api.searchBranches(repository, query.ifBlank { null })) {
++                branchResults = it
++            }
++            isSearchingBranches = false
++        }
++    }
++
+     fun launchTask() {
+         val prompt = promptText.trim()
+         if (prompt.isEmpty()) {
+@@ -152,6 +191,7 @@ class WebAppState(
+             api.startConversation(
+                 prompt = prompt,
+                 repository = repoText.trim().ifEmpty { null },
++                branch = selectedBranch.trim().ifEmpty { null },
+                 llmModel = activeProfile.model
+             ).fold(
+                 onSuccess = { task ->

@@ -1,0 +1,13 @@
+# UX harness calibrations (1280x900, live API via proxy localhost:12001)
+- Nav tabs y=860: Dashboard x160 / Conversations x480 / NewTask x800 / Settings x1120
+- List rows "Conversation <id>": x≈72, y 178+ (nav tab "Conversations" at y875 — exclude by y<800)
+- Detail: back arrow "€" @(28,32); NO bottom nav on detail screen
+- New Task: prompt placeholder click "checkout"@(164,105); repo field "owner/repo"@(110,338)
+- Repo results rows y400-700 (x≈86!); "N found" header y~466/451
+- Suggested-tasks section y>=740 (do NOT click Chaim rows there for repo-select tests)
+- Branch chips: horizontal strip y400-560; OCR noise: "main." (period), "_redesign/..." (underscore) — use contains
+- Click-on-sight needs STABLE frames (≥2 identical) — OCR latency 1-2s races list re-render
+- Servers: PORT=12001 OPENHANDS_API_KEY=<key> ... 12002 unkeyed for error path; static files read per-request (no restart on dist rebuild)
+- Start: cd /tmp/opencode/ohaa-kmp && setsid env PORT=1200X [OPENHANDS_API_KEY=...] WEB_ROOT=web/build/dist/wasmJs/productionExecutable nohup server/build/install/server/bin/server > log 2>&1 < /dev/null &
+- chromER: /usr/local/bin/chromium, flags --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader
+- WARNING: never use `pkill -f <server path>` — matches own shell cmdline; killed self once
