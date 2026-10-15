@@ -2037,7 +2037,8 @@ data class ConversationInfoDto(
 @JsonClass(generateAdapter = true)
 data class ConfirmationResponseRequestDto(
     @param:Json(name = "accept") val accept: Boolean,
-    @param:Json(name = "reason") val reason: String = "User rejected the action."
+    /** Canvas sends only `{accept}`; `reason` is optional and omitted when null. */
+    @param:Json(name = "reason") val reason: String? = null
 )
 
 /** Runtime POST responses are `{"success": true}`. */

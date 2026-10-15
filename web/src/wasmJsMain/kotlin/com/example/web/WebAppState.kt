@@ -74,6 +74,15 @@ class WebAppState(
     var events by mutableStateOf<List<AgentEvent>>(emptyList())
     var isSending by mutableStateOf(false)
 
+    /** True while the accept/reject call for a pending action is in flight. */
+    var isResponding by mutableStateOf(false)
+
+    /**
+     * Set once this conversation's pending confirmation was answered, so the
+     * waiting card disappears before the refreshed status arrives.
+     */
+    var waitingInputResolved by mutableStateOf(false)
+
     var gitDiff by mutableStateOf<GitDiffDto?>(null)
     var isGitLoading by mutableStateOf(false)
     var files by mutableStateOf<List<String>>(emptyList())
@@ -123,6 +132,20 @@ class WebAppState(
             onResult(api.listProfiles()) { cloudProfiles = it }
             onResult(api.listSecrets()) { secrets = it }
             isCloudSettingsLoading = false
+        }
+    }
+
+    /** Creates a secret, then reloads the list so the new row appears. */
+    fun addSecret(name: String, value: String, description: String?) {
+        scope.launch {
+            onResult(api.createSecret(name, value, description)) { refreshCloudSettings() }
+        }
+    }
+
+    /** Deletes a secret by name — the API's `secret_id` for custom secrets. */
+    fun deleteSecret(secretName: String) {
+        scope.launch {
+            onResult(api.deleteSecret(secretName)) { refreshCloudSettings() }
         }
     }
 
@@ -239,6 +262,7 @@ class WebAppState(
 
     fun openConversation(id: String) {
         selectedConversationId = id
+        waitingInputResolved = false
         refreshEvents()
     }
 
@@ -261,8 +285,41 @@ class WebAppState(
         }
     }
 
+    /**
+     * Accept or reject the agent's pending action from the waiting-input card.
+     *
+     * Needs the conversation's runtime host and session key, which are only
+     * populated while its sandbox is running.
+     */
+    fun respondToConfirmation(accept: Boolean) {
+        val conversation = selectedConversation ?: return
+        val conversationUrl = conversation.conversationUrl
+        if (conversationUrl.isNullOrBlank()) {
+            lastError = "This conversation has no live runtime; resume its sandbox and retry."
+            return
+        }
+        scope.launch {
+            isResponding = true
+            val responded = api.respondToConfirmation(
+                conversationId = conversation.id,
+                conversationUrl = conversationUrl,
+                accept = accept,
+                sessionApiKey = conversation.sessionApiKey
+            )
+            onResult(responded) {
+                waitingInputResolved = true
+                refreshEvents()
+            }
+            if (responded.isSuccess) {
+                onResult(api.listConversations()) { conversations = it }
+            }
+            isResponding = false
+        }
+    }
+
     fun closeConversation() {
         selectedConversationId = null
+        waitingInputResolved = false
         events = emptyList()
         gitDiff = null
         files = emptyList()

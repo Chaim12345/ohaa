@@ -58,7 +58,10 @@ fun WebRoot() {
             OpenHandsApiClient(
                 apiBaseUrl = "/cloud",
                 apiKey = { BrowserSession.apiKey() },
-                authHeaderName = "X-OpenHands-Key"
+                authHeaderName = "X-OpenHands-Key",
+                // Runtime-sandbox tunnel: same-origin call to the server's
+                // cloud-proxy envelope endpoint (see Server.kt).
+                cloudProxyUrl = "/api/cloud-proxy"
             )
         }
         val state = rememberWebAppState(api)
@@ -192,7 +195,9 @@ private fun AppShell(state: WebAppState) {
                     },
                     onClearCache = {},
                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
-                    onRefreshCloudSettings = state::refreshCloudSettings
+                    onRefreshCloudSettings = state::refreshCloudSettings,
+                    onAddSecret = state::addSecret,
+                    onDeleteSecret = state::deleteSecret
                 )
             }
 
@@ -233,7 +238,10 @@ private fun ConversationHost(state: WebAppState) {
         onLoadFiles = { state.loadFiles() },
         onReadFile = state::readFile,
         skills = state.skills,
-        onLoadSkills = state::loadSkills
+        onLoadSkills = state::loadSkills,
+        isResponding = state.isResponding,
+        waitingInputResolved = state.waitingInputResolved,
+        onRespondConfirmation = state::respondToConfirmation
     )
 }
 

@@ -2034,13 +2034,31 @@ data class ConversationInfoDto(
 @Serializable
 data class ConfirmationResponseRequestDto(
     @SerialName("accept") val accept: Boolean,
-    @SerialName("reason") val reason: String = "User rejected the action."
+    /** Canvas sends only `{accept}`; `reason` is optional and omitted when null. */
+    @SerialName("reason") val reason: String? = null
 )
 
 /** Runtime POST responses are `{"success": true}`. */
 @Serializable
 data class RuntimeSuccessDto(
     @SerialName("success") val success: Boolean = true
+)
+
+/**
+ * Envelope for the local server's `/api/cloud-proxy` tunnel (Canvas wire format).
+ *
+ * A runtime call is wrapped as `{host, method, path, headers, body}` and POSTed
+ * to the local server, which forwards it to [host] and relays the response with
+ * its status. `headers` carries the runtime auth, e.g. `X-Session-API-Key`.
+ */
+@Serializable
+data class CloudProxyEnvelopeDto(
+    @SerialName("host") val host: String,
+    @SerialName("method") val method: String,
+    @SerialName("path") val path: String,
+    @SerialName("headers") val headers: Map<String, String> = emptyMap(),
+    @SerialName("body") val body: JsonObject? = null,
+    @SerialName("timeout_seconds") val timeoutSeconds: Int? = null
 )
 
 /** Runtime local conversation resource (GET /conversations/{id}). */

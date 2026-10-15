@@ -4,16 +4,21 @@ import com.example.data.model.AgentEvent
 import com.example.data.model.AppConversationDto
 import com.example.data.model.BranchDto
 import com.example.data.model.CloudCredits
+import com.example.data.model.CloudProxyEnvelopeDto
+import com.example.data.model.ConfirmationResponseRequestDto
 import com.example.data.model.CreateConversationRequestDto
+import com.example.data.model.CreateSecretRequest
 import com.example.data.model.EventDto
 import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
 import com.example.data.model.MessagePayloads
 import com.example.data.model.LlmProfileDto
+import com.example.data.model.MessageResponseDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PageDto
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
+import com.example.data.model.RuntimeSuccessDto
 import com.example.data.model.SecretDto
 import com.example.data.model.SendMessageRequest
 import com.example.data.model.SkillDto
@@ -37,10 +42,13 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -65,6 +73,16 @@ class OpenHandsApiClient(
      * local proxy can forward it upstream as `Authorization: Bearer …`.
      */
     private val authHeaderName: String = "X-Access-Token",
+    /**
+     * Local endpoint that tunnels runtime-sandbox calls, using Canvas's
+     * cloud-proxy envelope `{host, method, path, headers, body}`.
+     *
+     * The browser cannot call a per-conversation `*.prod-runtime.all-hands.dev`
+     * host directly (CORS), so runtime calls are POSTed here and the server
+     * forwards them. The browser build points this at the :server root; the
+     * default keeps the Cloud App API base for direct callers.
+     */
+    private val cloudProxyUrl: String = "$apiBaseUrl/api/cloud-proxy",
     private val http: HttpClient = defaultHttpClient()
 ) {
 
@@ -198,6 +216,43 @@ class OpenHandsApiClient(
         }.body<Unit>()
     }
 
+    /**
+     * Accept or reject the agent's pending action (the WaitingForInputCard).
+     *
+     * Wrapped in a cloud-proxy envelope because the runtime host is not
+     * CORS-reachable from the browser; `sessionApiKey` travels as the
+     * `X-Session-API-Key` header of the forwarded call, matching Canvas's
+     * `authMode: "session-api-key"` path.
+     */
+    suspend fun respondToConfirmation(
+        conversationId: String,
+        conversationUrl: String,
+        accept: Boolean,
+        reason: String? = null,
+        sessionApiKey: String? = null
+    ): Result<RuntimeSuccessDto> = call {
+        val request = ConfirmationResponseRequestDto(
+            accept = accept,
+            reason = reason?.takeIf { it.isNotBlank() }
+        )
+        http.post(cloudProxyUrl) {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(
+                CloudProxyEnvelopeDto(
+                    host = conversationUrl.trimEnd('/'),
+                    method = "POST",
+                    path = "/api/conversations/${conversationId.encodeURLPathPart()}" +
+                        "/events/respond_to_confirmation",
+                    headers = sessionApiKey?.takeIf { it.isNotBlank() }
+                        ?.let { mapOf("X-Session-API-Key" to it) }
+                        .orEmpty(),
+                    body = json.encodeToJsonElement(request).jsonObject
+                )
+            )
+        }.body()
+    }
+
     suspend fun renameConversation(conversationId: String, title: String): Result<Unit> = call {
         http.patch("$apiBaseUrl/api/v1/app-conversations/$conversationId") {
             auth()
@@ -310,6 +365,36 @@ class OpenHandsApiClient(
     suspend fun listSecrets(): Result<List<SecretDto>> = call {
         http.get("$apiBaseUrl/api/v1/secrets/search") { auth() }
             .body<PageDto<SecretDto>>().items
+    }
+
+    /** POST /api/v1/secrets — the value is write-only and never returned. */
+    suspend fun createSecret(
+        name: String,
+        value: String,
+        description: String? = null
+    ): Result<MessageResponseDto> = call {
+        http.post("$apiBaseUrl/api/v1/secrets") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(
+                CreateSecretRequest(
+                    name = name.trim(),
+                    value = value,
+                    description = description?.trim()?.ifEmpty { null }
+                )
+            )
+        }.body()
+    }
+
+    /**
+     * DELETE /api/v1/secrets/{secret_id}.
+     *
+     * For custom secrets the spec's `secret_id` path value is the secret's
+     * *name*: `CustomSecretWithoutValue` has no id field, and Canvas deletes
+     * cloud secrets by name (`SecretsService.deleteSecret(name)`).
+     */
+    suspend fun deleteSecret(secretId: String): Result<MessageResponseDto> = call {
+        http.delete("$apiBaseUrl/api/v1/secrets/${secretId.encodeURLPathPart()}") { auth() }.body()
     }
 
     /**

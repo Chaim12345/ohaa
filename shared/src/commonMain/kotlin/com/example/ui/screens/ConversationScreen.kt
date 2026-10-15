@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Tab
@@ -129,7 +131,13 @@ fun ConversationScreen(
     onReadFile: (String) -> Unit = {},
     skills: List<String> = emptyList(),
     onLoadSkills: () -> Unit = {},
-    onExportTrajectory: () -> Unit = {}
+    onExportTrajectory: () -> Unit = {},
+    /** True while an accept/reject for the pending action is in flight. */
+    isResponding: Boolean = false,
+    /** Set once the pending confirmation was answered, so the card stops showing. */
+    waitingInputResolved: Boolean = false,
+    /** Accept (`true`) or reject (`false`) the agent's pending action. */
+    onRespondConfirmation: (Boolean) -> Unit = {}
 ) {
     var tab by remember(conversation?.id) { mutableStateOf(ConversationTab.CHAT) }
     var showProfileDialog by remember { mutableStateOf(false) }
@@ -195,7 +203,10 @@ fun ConversationScreen(
                         com.example.data.model.ConversationUiStatus.WAITING_INPUT,
                     webBaseUrl = webBaseUrl,
                     conversationId = conversation?.id,
-                    onSendMessage = onSendMessage
+                    onSendMessage = onSendMessage,
+                    isResponding = isResponding,
+                    waitingInputResolved = waitingInputResolved,
+                    onRespondConfirmation = onRespondConfirmation
                 )
                 ConversationTab.FILES -> FilesTab(
                     files = files,
@@ -414,7 +425,10 @@ private fun ChatTab(
     isWaiting: Boolean,
     webBaseUrl: String,
     conversationId: String?,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    isResponding: Boolean,
+    waitingInputResolved: Boolean,
+    onRespondConfirmation: (Boolean) -> Unit
 ) {
     val listState = rememberLazyListState()
     var composer by remember { mutableStateOf("") }
@@ -452,8 +466,16 @@ private fun ChatTab(
             items(renderableEvents, key = { it.id }) { event ->
                 TranscriptEvent(event)
             }
-            if (isWaiting) {
-                item { WaitingForInputCard(webBaseUrl, conversationId, uriHandler) }
+            if (isWaiting && !waitingInputResolved) {
+                item {
+                    WaitingForInputCard(
+                        webBaseUrl = webBaseUrl,
+                        conversationId = conversationId,
+                        uriHandler = uriHandler,
+                        isResponding = isResponding,
+                        onRespond = onRespondConfirmation
+                    )
+                }
             }
         }
 
@@ -509,7 +531,9 @@ private fun ChatTab(
 private fun WaitingForInputCard(
     webBaseUrl: String,
     conversationId: String?,
-    uriHandler: androidx.compose.ui.platform.UriHandler
+    uriHandler: androidx.compose.ui.platform.UriHandler,
+    isResponding: Boolean,
+    onRespond: (Boolean) -> Unit
 ) {
     CanvasCard(accent = CanvasColors.warning) {
         Text("The agent is waiting on you", fontWeight = FontWeight.Medium)
@@ -519,8 +543,31 @@ private fun WaitingForInputCard(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.height(Spacing.sm))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { onRespond(true) },
+                enabled = !isResponding,
+                shape = Shapes.medium,
+                modifier = Modifier.testTag("btn_accept_confirmation")
+            ) { Text("Accept") }
+            Spacer(Modifier.width(Spacing.sm))
+            OutlinedButton(
+                onClick = { onRespond(false) },
+                enabled = !isResponding,
+                shape = Shapes.medium,
+                modifier = Modifier.testTag("btn_reject_confirmation")
+            ) { Text("Reject") }
+            if (isResponding) {
+                Spacer(Modifier.width(Spacing.sm))
+                CircularProgressIndicator(
+                    Modifier.size(Sizes.iconSmall),
+                    strokeWidth = 2.dp
+                )
+            }
+        }
         if (conversationId != null) {
-            Spacer(Modifier.height(Spacing.sm))
+            Spacer(Modifier.height(Spacing.xs))
             TextButton(onClick = {
                 uriHandler.openUri("${webBaseUrl.trimEnd('/')}/conversations/$conversationId")
             }) { Text("Open in web app") }

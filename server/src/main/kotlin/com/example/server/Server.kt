@@ -23,10 +23,16 @@ import io.ktor.server.request.uri
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 
 /**
@@ -65,6 +71,17 @@ private fun isLocalhostOrigin(origin: String): Boolean {
     if (!origin.startsWith("http://") && !origin.startsWith("https://")) return false
     val authority = origin.substringAfter("://").substringBefore('/')
     return authority.substringBefore(':').lowercase() in setOf("localhost", "127.0.0.1")
+}
+
+/**
+ * Runtime sandboxes live on `*.prod-runtime.all-hands.dev`, the App API on
+ * `app.all-hands.dev`. The tunnel refuses every other target, so it can never
+ * be turned into a generic SSRF hop against an internal address.
+ */
+private fun isAllowedRuntimeHost(url: String): Boolean {
+    if (!url.startsWith("https://")) return false
+    val hostname = url.substringAfter("://").substringBefore('/').substringBefore(':').lowercase()
+    return hostname == "all-hands.dev" || hostname.endsWith(".all-hands.dev")
 }
 
 fun Application.module() {
@@ -178,6 +195,67 @@ fun Application.module() {
                     status = upstream.status
                 )
             }
+        }
+
+        // Runtime-sandbox tunnel, mirroring Canvas's local-agent-server
+        // `/api/cloud-proxy` envelope: the wasm client POSTs
+        // `{host, method, path, headers, body}` here because the browser cannot
+        // reach a per-conversation runtime host cross-origin. The envelope's
+        // headers (e.g. `X-Session-API-Key`) authenticate the forwarded call.
+        post("/api/cloud-proxy") {
+            val envelope = runCatching {
+                Json.parseToJsonElement(call.receiveText()).jsonObject
+            }.getOrNull()
+            val host = envelope?.get("host")?.jsonPrimitive?.contentOrNull
+            val path = envelope?.get("path")?.jsonPrimitive?.contentOrNull
+            val method = envelope?.get("method")?.jsonPrimitive?.contentOrNull
+                ?.let { HttpMethod.parse(it) }
+                ?: HttpMethod.Post
+
+            if (host == null || path == null || !isAllowedRuntimeHost(host)) {
+                call.respondText(
+                    text = """{"detail":"Invalid cloud-proxy envelope"}""",
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.BadRequest
+                )
+                return@post
+            }
+
+            val upstreamHeaders = envelope["headers"]?.jsonObject
+                ?.mapNotNull { (name, value) ->
+                    value.jsonPrimitive.contentOrNull?.let { name to it }
+                }
+                .orEmpty()
+            val upstreamBody = envelope["body"]
+                ?.takeIf { it !is JsonNull }
+                ?.toString()
+
+            val target = "${host.trimEnd('/')}/${path.trimStart('/')}"
+            val upstream = proxy.request(target) {
+                this.method = method
+                header("Accept", "application/json")
+                upstreamHeaders.forEach { (name, value) -> header(name, value) }
+                upstreamBody?.let {
+                    contentType(ContentType.Application.Json)
+                    setBody(it)
+                }
+            }
+            val upstreamBytes = upstream.readRawBytes()
+
+            if (upstream.status.value !in 200..299) {
+                call.respondText(
+                    text = """{"detail":"Upstream request failed with HTTP ${upstream.status.value}"}""",
+                    contentType = ContentType.Application.Json,
+                    status = upstream.status
+                )
+                return@post
+            }
+
+            call.respondBytes(
+                bytes = upstreamBytes,
+                contentType = upstream.contentType(),
+                status = upstream.status
+            )
         }
 
         // The compiled Compose/Wasm bundle, served from the same origin.

@@ -505,7 +505,7 @@ class OpenHandsRepository(
                 conversationId,
                 ConfirmationResponseRequestDto(
                     accept = accept,
-                    reason = reason?.takeIf { r -> r.isNotBlank() } ?: "User rejected the action."
+                    reason = reason?.takeIf { r -> r.isNotBlank() }
                 )
             )
         }
