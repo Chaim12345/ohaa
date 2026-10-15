@@ -9,11 +9,14 @@ import androidx.compose.runtime.setValue
 import com.example.data.api.OpenHandsApiClient
 import com.example.data.api.toAgentEvent
 import com.example.data.model.AgentEvent
+import com.example.data.model.BranchDto
 import com.example.data.model.ConversationUiStatus
 import com.example.data.model.GitDiffDto
+import com.example.data.model.LlmProfileDto
 import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
 import com.example.data.model.RepositoryDto
+import com.example.data.model.SecretDto
 import com.example.data.model.SuggestedTaskDto
 import com.example.ui.viewmodel.SandboxUiState
 import com.example.data.model.UserInfoDto
@@ -51,12 +54,21 @@ class WebAppState(
     var repoResults by mutableStateOf<List<RepositoryDto>>(emptyList())
     var isSearchingRepos by mutableStateOf(false)
 
+    var branchResults by mutableStateOf<List<BranchDto>>(emptyList())
+    var selectedBranch by mutableStateOf("")
+    var isSearchingBranches by mutableStateOf(false)
+
     var launchStage by mutableStateOf(LaunchStage.IDLE)
     var launchStatusText by mutableStateOf<String?>(null)
     var selectedConversationId by mutableStateOf<String?>(null)
     var statusFilter by mutableStateOf<ConversationUiStatus?>(null)
     var activeProfile by mutableStateOf(AgentProfile())
     var credits by mutableStateOf<Double?>(null)
+
+    // Settings: cloud profiles and secrets, loaded from the live API.
+    var cloudProfiles by mutableStateOf<List<LlmProfileDto>>(emptyList())
+    var secrets by mutableStateOf<List<SecretDto>>(emptyList())
+    var isCloudSettingsLoading by mutableStateOf(false)
 
     /** Transcript of [selectedConversationId], refreshed from the events API. */
     var events by mutableStateOf<List<AgentEvent>>(emptyList())
@@ -93,6 +105,7 @@ class WebAppState(
             onResult(api.getCredits()) { credits = it.credits }
             onResult(api.getUserInfo()) { account = it }
             isRefreshing = false
+            refreshCloudSettings()
         }
     }
 
@@ -100,6 +113,16 @@ class WebAppState(
         scope.launch {
             onResult(api.templates()) { templates = it }
             onResult(api.suggestedTasks()) { suggestedTasks = it }
+        }
+    }
+
+    /** Cloud profiles and secrets backing the Settings screen. */
+    fun refreshCloudSettings() {
+        scope.launch {
+            isCloudSettingsLoading = true
+            onResult(api.listProfiles()) { cloudProfiles = it }
+            onResult(api.listSecrets()) { secrets = it }
+            isCloudSettingsLoading = false
         }
     }
 
@@ -140,6 +163,22 @@ class WebAppState(
         }
     }
 
+    /** Branches for the selected repo; empty repo ⇒ empty branch list. */
+    fun searchBranches(query: String) {
+        val repository = repoText.trim()
+        if (repository.isEmpty()) {
+            branchResults = emptyList()
+            return
+        }
+        scope.launch {
+            isSearchingBranches = true
+            onResult(api.searchBranches(repository, query.ifBlank { null })) {
+                branchResults = it
+            }
+            isSearchingBranches = false
+        }
+    }
+
     fun launchTask() {
         val prompt = promptText.trim()
         if (prompt.isEmpty()) {
@@ -152,6 +191,7 @@ class WebAppState(
             api.startConversation(
                 prompt = prompt,
                 repository = repoText.trim().ifEmpty { null },
+                branch = selectedBranch.trim().ifEmpty { null },
                 llmModel = activeProfile.model
             ).fold(
                 onSuccess = { task ->

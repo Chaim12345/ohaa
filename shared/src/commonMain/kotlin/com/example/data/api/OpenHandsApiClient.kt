@@ -25,6 +25,7 @@ import com.example.data.model.UserInfoDto
 import com.example.util.toEpochMillis
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -33,6 +34,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
@@ -45,30 +47,50 @@ import kotlinx.serialization.json.jsonPrimitive
  * The API surface shared by the Android app and the web client.
  *
  * Everything here is a real call against the OpenHands Cloud REST API; there is
- * no demo or stubbed path. The two targets differ only in [apiBaseUrl]:
- *  - Android talks to `https://app.all-hands.dev` directly, because the key is
- *    stored on the device and Android has no same-origin restriction.
- *  - The browser talks to its own origin, which the Ktor backend proxies to
- *    app.all-hands.dev. That keeps the API key off the page's network tab and
- *    sidesteps CORS entirely.
+ * no demo or stubbed path. The targets differ only in [apiBaseUrl] and the header
+ * carrying the key ([authHeaderName]):
+ *  - Android talks to `https://app.all-hands.dev` directly with `X-Access-Token`,
+ *    because the key is stored on the device and Android has no same-origin
+ *    restriction.
+ *  - The browser talks to its own origin with `X-OpenHands-Key`, which the Ktor
+ *    backend forwards upstream as `Authorization: Bearer …`. That keeps the API
+ *    key off the page's network tab and sidesteps CORS entirely.
  */
 class OpenHandsApiClient(
     private val apiBaseUrl: String,
     private val apiKey: () -> String,
+    /**
+     * Wire header carrying the key. Android talks to app.all-hands.dev directly
+     * with `X-Access-Token`; the browser build passes `X-OpenHands-Key` so the
+     * local proxy can forward it upstream as `Authorization: Bearer …`.
+     */
+    private val authHeaderName: String = "X-Access-Token",
     private val http: HttpClient = defaultHttpClient()
 ) {
 
     private fun io.ktor.client.request.HttpRequestBuilder.auth() {
         val key = apiKey().trim()
-        if (key.isNotEmpty()) header("Authorization", "Bearer $key")
+        if (key.isNotEmpty()) header(authHeaderName, key)
     }
 
     private suspend inline fun <reified T> call(block: () -> T): Result<T> =
         try {
             Result.success(block())
+        } catch (e: ResponseException) {
+            // Non-2xx: never parse an error body as success, and never surface
+            // Ktor's URL-bearing message — status plus a short body excerpt.
+            Result.failure(IllegalStateException(httpError(e)))
         } catch (e: Throwable) {
             Result.failure(e)
         }
+
+    /** `HTTP 401: <body>` — first ~200 chars only; no URL, no stack trace. */
+    private suspend fun httpError(e: ResponseException): String {
+        val body = runCatching { e.response.bodyAsText() }.getOrDefault("").ifEmpty {
+            e.message?.substringAfter(". Text: \"", "")?.removeSuffix("\"").orEmpty()
+        }
+        return "HTTP ${e.response.status.value}: ${body.take(200)}"
+    }
 
     /** GET /api/service/health — used by Settings to test the connection. */
     suspend fun checkHealth(): Result<String> = call {
@@ -252,19 +274,24 @@ class OpenHandsApiClient(
         }.body<Unit>()
     }
 
+    /** `provider` is required by upstream; `query` filters repositories by name. */
     suspend fun searchRepositories(query: String, limit: Int = 20): Result<List<RepositoryDto>> = call {
         http.get("$apiBaseUrl/api/v1/git/repositories/search") {
             auth()
+            // The only git provider this client supports (upstream requires the field).
+            parameter("provider", "github")
             parameter("query", query)
             parameter("limit", limit)
         }.body<PageDto<RepositoryDto>>().items
     }
 
+    /** `provider` and `query` are required by upstream (`query` may be empty but must be sent). */
     suspend fun searchBranches(repository: String, query: String? = null): Result<List<BranchDto>> = call {
         http.get("$apiBaseUrl/api/v1/git/branches/search") {
             auth()
+            parameter("provider", "github")
             parameter("repository", repository)
-            query?.let { parameter("query", it) }
+            parameter("query", query ?: "")
         }.body<PageDto<BranchDto>>().items
     }
 
@@ -328,6 +355,9 @@ class OpenHandsApiClient(
         }
 
         fun defaultHttpClient(): HttpClient = HttpClient {
+            // Reject non-2xx before deserialization, so an error body can never
+            // be decoded as a success payload.
+            expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
     }

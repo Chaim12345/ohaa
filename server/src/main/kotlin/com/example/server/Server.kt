@@ -39,8 +39,8 @@ import java.io.File
  *     token server-side. The key never reaches the browser, and the wasm client
  *     calls exactly one origin: this server.
  *
- * Nothing here fabricates responses — a request the upstream rejects is returned
- * to the caller with the upstream status and body intact.
+ * A request the upstream rejects keeps its status but gets a generic JSON body,
+ * and a transport failure answers 502 generically — no exception detail leaks.
  */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
@@ -50,26 +50,48 @@ fun main() {
 private val upstreamBase: String =
     System.getenv("OPENHANDS_BASE_URL")?.trimEnd('/') ?: "https://app.all-hands.dev"
 
-/** Server-side default token; a per-request `X-OpenHands-Key` header overrides it. */
+/** Server-side token; a per-request `X-OpenHands-Key` header is used only when this is unset. */
 private val defaultApiKey: String? = System.getenv("OPENHANDS_API_KEY")
 
 /** Directory holding the wasm distribution; defaults to the Gradle build output. */
 private val webRoot: File =
     File(System.getenv("WEB_ROOT") ?: "web/build/dist/wasmJs/productionExecutable")
 
+/**
+ * The only origins CORS accepts: `localhost` and `127.0.0.1`, on any port, so a
+ * dev server binding a random port still works while every other origin is refused.
+ */
+private fun isLocalhostOrigin(origin: String): Boolean {
+    if (!origin.startsWith("http://") && !origin.startsWith("https://")) return false
+    val authority = origin.substringAfter("://").substringBefore('/')
+    return authority.substringBefore(':').lowercase() in setOf("localhost", "127.0.0.1")
+}
+
 fun Application.module() {
     val proxy = HttpClient()
 
     install(CallLogging)
     install(CORS) {
-        anyHost()
-        allowHeaders { true }
+        // Localhost only, on whatever port a dev server happens to bind.
+        allowOrigins { origin -> isLocalhostOrigin(origin) }
         allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Patch)
+        allowHeader("Content-Type")
+        allowHeader("X-OpenHands-Key")
+        allowHeader("Authorization")
+        allowHeader("X-Access-Token")
+        allowHeader("Accept")
     }
     install(StatusPages) {
-        exception<Throwable> { call, cause ->
+        // Connection failures answer 502 with a fixed body: exception messages
+        // (host, port, cause) must not reach the caller.
+        exception<Throwable> { call, _ ->
             call.respondText(
-                text = """{"detail":${JsonPrimitive(cause.message ?: "proxy error")}}""",
+                text = """{"detail":"Bad gateway"}""",
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.BadGateway
             )
@@ -107,8 +129,11 @@ fun Application.module() {
                     if (query.isNotEmpty()) append('?').append(query)
                 }
 
-                val apiKey = call.request.headers["X-OpenHands-Key"]?.takeIf { it.isNotBlank() }
-                    ?: defaultApiKey
+                // The env key wins when present; the browser-supplied key only
+                // fills the gap for a server without its own credential.
+                val browserKey =
+                    call.request.headers["X-OpenHands-Key"]?.takeIf { it.isNotBlank() }
+                val apiKey = defaultApiKey?.takeIf { it.isNotBlank() } ?: browserKey
                 if (apiKey.isNullOrBlank()) {
                     call.respondText(
                         text = """{"detail":"No API key. Set OPENHANDS_API_KEY on the server or provide one in Settings."}""",
@@ -134,9 +159,21 @@ fun Application.module() {
                         setBody(it)
                     }
                 }
+                val upstreamBytes = upstream.readRawBytes()
+
+                if (upstream.status.value !in 200..299) {
+                    // Status passes through; the payload stays generic so no
+                    // upstream error detail is echoed to the caller.
+                    call.respondText(
+                        text = """{"detail":"Upstream request failed with HTTP ${upstream.status.value}"}""",
+                        contentType = ContentType.Application.Json,
+                        status = upstream.status
+                    )
+                    return@handle
+                }
 
                 call.respondBytes(
-                    bytes = upstream.readRawBytes(),
+                    bytes = upstreamBytes,
                     contentType = upstream.contentType(),
                     status = upstream.status
                 )

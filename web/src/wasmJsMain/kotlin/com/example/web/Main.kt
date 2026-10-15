@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -51,7 +57,8 @@ fun WebRoot() {
         val api = remember {
             OpenHandsApiClient(
                 apiBaseUrl = "/cloud",
-                apiKey = { BrowserSession.apiKey() }
+                apiKey = { BrowserSession.apiKey() },
+                authHeaderName = "X-OpenHands-Key"
             )
         }
         val state = rememberWebAppState(api)
@@ -80,7 +87,17 @@ private fun AppShell(state: WebAppState) {
                     NavigationBarItem(
                         selected = state.tab == tab,
                         onClick = { state.tab = tab },
-                        icon = {},
+                        icon = {
+                            Icon(
+                                imageVector = when (tab) {
+                                    AppTab.DASHBOARD -> Icons.Default.Dashboard
+                                    AppTab.CONVERSATIONS -> Icons.Default.List
+                                    AppTab.NEW_TASK -> Icons.Default.Add
+                                    AppTab.SETTINGS -> Icons.Default.Settings
+                                },
+                                contentDescription = tab.label
+                            )
+                        },
                         label = { Text(tab.label) }
                     )
                 }
@@ -128,8 +145,8 @@ private fun AppShell(state: WebAppState) {
                     isDemoMode = false,
                     activeProfile = state.activeProfile,
                     repoResults = state.repoResults,
-                    branchResults = emptyList(),
-                    selectedBranch = "",
+                    branchResults = state.branchResults,
+                    selectedBranch = state.selectedBranch,
                     isSearchingRepos = state.isSearchingRepos,
                     onPromptChanged = { state.promptText = it },
                     onRepoChanged = state::searchRepositories,
@@ -139,8 +156,10 @@ private fun AppShell(state: WebAppState) {
                     onSelectRepository = { repo ->
                         state.repoText = repo.fullName
                         state.repoResults = emptyList()
+                        state.selectedBranch = ""
+                        state.searchBranches("")
                     },
-                    onSelectBranch = {},
+                    onSelectBranch = { state.selectedBranch = it },
                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
                     suggestedTasks = state.suggestedTasks,
                     onLoadSuggestedTasks = state::loadTemplates,
@@ -157,6 +176,9 @@ private fun AppShell(state: WebAppState) {
                     isDemoMode = false,
                     activeProfile = state.activeProfile,
                     account = state.account,
+                    cloudProfiles = state.cloudProfiles,
+                    secrets = state.secrets,
+                    isCloudSettingsLoading = state.isCloudSettingsLoading,
                     onApiKeyChanged = { BrowserSession.setApiKey(it) },
                     onBaseUrlChanged = {},
                     onSaveConfig = {
@@ -170,7 +192,7 @@ private fun AppShell(state: WebAppState) {
                     },
                     onClearCache = {},
                     onModelChanged = { state.activeProfile = state.activeProfile.copy(model = it) },
-                    onRefreshCloudSettings = state::refresh
+                    onRefreshCloudSettings = state::refreshCloudSettings
                 )
             }
 

@@ -14,7 +14,7 @@ kotlin {
     // declared through `androidLibrary` rather than the old `androidTarget()`.
     androidLibrary {
         namespace = "com.example.shared"
-        compileSdk = 36
+        compileSdk { version = release(37) { minorApiLevel = 2 } }
         minSdk = 24
 
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
