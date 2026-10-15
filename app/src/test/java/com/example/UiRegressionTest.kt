@@ -1,6 +1,7 @@
 package com.example
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -322,6 +323,56 @@ class UiRegressionTest {
         assertTrue(deleted == null)
         composeTestRule.onNodeWithTag("btn_confirm_delete_secret").performClick()
         assertTrue(deleted == "API_KEY")
+    }
+
+    @Test
+    fun `add secret dialog gates Add on a valid name and a non-blank value`() {
+        var created: Triple<String, String, String?>? = null
+        composeTestRule.setContent(settingsTestContent(
+            secrets = emptyList(),
+            onAddSecret = { n, v, d -> created = Triple(n, v, d) }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_add_secret"))
+        composeTestRule.onNodeWithTag("btn_add_secret").performClick()
+
+        // Empty form: nothing to submit.
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsNotEnabled()
+
+        // The cloud rejects anything outside [A-Za-z0-9_]; a hyphen must keep Add disabled.
+        composeTestRule.onNodeWithTag("field_secret_name").performTextInput("API-KEY")
+        composeTestRule.onNodeWithTag("field_secret_value").performTextInput("hunter2")
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsNotEnabled()
+
+        // A valid name enables Add, and confirming delivers name/value/description.
+        composeTestRule.onNodeWithTag("field_secret_name").performTextClearance()
+        composeTestRule.onNodeWithTag("field_secret_name").performTextInput("API_KEY")
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").assertIsEnabled()
+        composeTestRule.onNodeWithTag("btn_confirm_add_secret").performClick()
+        assertTrue(created == Triple("API_KEY", "hunter2", ""))
+    }
+
+    @Test
+    fun `delete secret confirmation names the specific secret`() {
+        var deleted: String? = null
+        composeTestRule.setContent(settingsTestContent(
+            secrets = listOf(
+                SecretDto(name = "API_KEY", description = "Deploy key"),
+                SecretDto(name = "OTHER_KEY")
+            ),
+            onDeleteSecret = { deleted = it }
+        ))
+        composeTestRule.onNodeWithTag("settings_screen")
+            .performScrollToNode(hasTestTag("btn_delete_secret_OTHER_KEY"))
+        composeTestRule.onNodeWithTag("btn_delete_secret_OTHER_KEY").performClick()
+        composeTestRule.onNodeWithText("Delete secret?").assertExists()
+        // The dialog must name the specific secret so a mis-tap can be caught.
+        composeTestRule
+            .onNodeWithText("'OTHER_KEY' will be removed from your account. This cannot be undone.")
+            .assertExists()
+        assertTrue(deleted == null)
+        composeTestRule.onNodeWithTag("btn_confirm_delete_secret").performClick()
+        assertTrue(deleted == "OTHER_KEY")
     }
 
     @Test

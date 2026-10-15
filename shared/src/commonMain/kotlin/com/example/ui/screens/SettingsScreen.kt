@@ -634,6 +634,11 @@ private fun AddSecretDialog(
     var value by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var valueVisible by remember { mutableStateOf(false) }
+    // The cloud rejects anything outside [A-Za-z0-9_] with a 422; guard here so
+    // the failure is visible before the call instead of as a server error.
+    val nameValid = name.isNotBlank() && name.all { char ->
+        char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '_'
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add secret") },
@@ -650,6 +655,7 @@ private fun AddSecretDialog(
                     onValueChange = { name = it },
                     label = { Text("Name") },
                     singleLine = true,
+                    isError = name.isNotBlank() && !nameValid,
                     shape = Shapes.medium,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CanvasPrimary,
@@ -658,6 +664,12 @@ private fun AddSecretDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("field_secret_name")
+                )
+                Text(
+                    "Letters, digits and underscores only (e.g. GITHUB_TOKEN).",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (name.isNotBlank() && !nameValid) CanvasColors.danger
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(Spacing.sm))
                 OutlinedTextField(
@@ -705,7 +717,7 @@ private fun AddSecretDialog(
         confirmButton = {
             TextButton(
                 onClick = { onCreate(name, value, description) },
-                enabled = name.isNotBlank() && value.isNotBlank(),
+                enabled = nameValid && value.isNotBlank(),
                 modifier = Modifier.testTag("btn_confirm_add_secret")
             ) { Text("Add", color = CanvasPrimaryDeep) }
         },
