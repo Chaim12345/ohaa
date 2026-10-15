@@ -13,6 +13,15 @@
   same-origin access without shipping an API key to the client.
 - `docs/HANDOFF.md` describing the migration, the two transcript bugs, and the
   remaining known issues.
+- **Runtime tunnel, confirmation respond, and secrets CRUD (Canvas parity).**
+  - `POST /api/cloud-proxy` (`:server`) carries Canvas's runtime envelope
+    (`{host, method, path, headers, body, timeout_seconds}`) so the Wasm build can
+    reach a per-conversation runtime; targets are restricted to
+    `https://*.all-hands.dev`, so the tunnel cannot become a generic SSRF hop.
+  - `respondToConfirmation` accepts/rejects a pending agent action. `reason` is
+    optional and omitted when empty — the live API rejects an explicit `null`.
+  - `createSecret`/`deleteSecret` on the API client, wired into Settings for both
+    builds. For custom secrets the API's `secret_id` is the secret *name*.
 
 ### Fixed
 - **Transcript only showed the oldest events.** `searchEvents()` relied on the
@@ -42,6 +51,18 @@
   branch is passed to `launchTask`, bottom-nav icons render in Wasm, and Settings is wired
   to Cloud profiles/secrets via `refreshCloudSettings()`.
 - **`compileSdk` set to 37.2** (`minorApiLevel = 2`) for `:app` and `:shared`.
+- **Secret-name validation was missing on Android.** The `[A-Za-z0-9_]` guard
+  (a `nameValid` predicate, the field's `isError`, the "Letters, digits and
+  underscores only" hint, and `enabled = nameValid && value.isNotBlank()`) had only
+  been added to the `:shared` copy of `SettingsScreen.kt`; the app keeps its own
+  copy, so Android would submit `API-KEY` and surface a server 422 while the web
+  build blocked it. The app copy now carries the same guard.
 
 ### Changed
 - `.gitignore` now excludes per-module `build/` directories.
+
+### Tests
+- `UiRegressionTest` (Robolectric + `createComposeRule`) now also covers Add-secret
+  gating (empty → disabled; invalid name such as `API-KEY` → disabled; valid name
+  plus value → enabled and delivers name/value/description) and the per-secret
+  delete confirmation body (`'NAME' will be removed from your account…`).
