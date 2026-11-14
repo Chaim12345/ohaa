@@ -93,7 +93,7 @@ object ApiClient {
      * produces a fresh client rather than a stale credential.
      */
     fun agentServerFor(conversationUrl: String, sessionKey: String): AgentServerApiService {
-        val base = normalizeBaseUrl(conversationUrl)
+        val base = runtimeOrigin(conversationUrl)
         val cacheKey = "$base|$sessionKey"
         return agentServerCache.getOrPut(cacheKey) {
             createAgentServer(
@@ -172,6 +172,29 @@ object ApiClient {
             url = "$url/"
         }
         return url
+    }
+
+    /**
+     * Returns the scheme + authority (`scheme://host[:port]/`) of a URL,
+     * discarding any path.
+     *
+     * OpenHands Cloud reports a conversation's `conversation_url` as
+     * `<origin>/api/conversations/<id>`, but the agent-server exposes every
+     * route from the host root (`/server_info`, `/api/git/changes`,
+     * `/api/conversations/<id>`). Using the reported URL verbatim as the
+     * Retrofit base therefore duplicates the path segment and 404s every
+     * runtime call, so the runtime client must be rooted at the origin.
+     */
+    fun runtimeOrigin(raw: String): String {
+        val normalized = normalizeBaseUrl(raw)
+        return try {
+            val uri = java.net.URI(normalized)
+            val host = uri.host ?: return normalized
+            val port = if (uri.port == -1) "" else ":${uri.port}"
+            "${uri.scheme}://$host$port/"
+        } catch (e: Exception) {
+            normalized
+        }
     }
 
     /** Extracts a human-readable message from a FastAPI error body. */

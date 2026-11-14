@@ -24,14 +24,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Difference
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material3.Button
@@ -64,6 +63,7 @@ import com.example.data.model.ConversationStatus
 import com.example.data.model.GitChange
 import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.EventItemView
+import com.example.ui.components.EdgeFadeRow
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.StatusPaused as StatusPausedColor
@@ -111,6 +111,8 @@ fun ConversationDetailScreen(
     var showRename by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var showChanges by remember { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
     val listState = rememberLazyListState()
 
     val quickSuggestions = listOf(
@@ -265,71 +267,69 @@ fun ConversationDetailScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     conversation?.let { StatusBadge(status = it.status) }
-                    IconButton(
-                        onClick = {
-                            showChanges = !showChanges
-                            if (showChanges && gitChanges.isEmpty()) {
-                                onRefreshChanges()
-                            }
-                        },
-                        modifier = Modifier.testTag("toggle_changes_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Difference,
-                            contentDescription = "Changed files",
-                            tint = if (showChanges) OpenHandsPrimaryDark
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (!conversation?.conversationUrl.isNullOrBlank()) {
-                        val uriHandler = LocalUriHandler.current
+                    Box {
                         IconButton(
-                            onClick = {
-                                conversation?.conversationUrl?.let { url ->
-                                    runCatching { uriHandler.openUri(url) }
-                                }
-                            },
-                            modifier = Modifier.testTag("open_in_browser_button")
+                            onClick = { showOverflow = true },
+                            modifier = Modifier.testTag("overflow_menu_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.OpenInNew,
-                                contentDescription = "Open in browser",
-                                tint = OpenHandsPrimaryDark
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More actions",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.testTag("refresh_events_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh events",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            renameText = conversation?.title ?: ""
-                            showRename = true
-                        },
-                        modifier = Modifier.testTag("rename_conversation_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Rename conversation",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(
-                        onClick = { showDeleteConfirm = true },
-                        modifier = Modifier.testTag("delete_conversation_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete conversation",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                        DropdownMenu(
+                            expanded = showOverflow,
+                            onDismissRequest = { showOverflow = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Changed files") },
+                                onClick = {
+                                    showOverflow = false
+                                    showChanges = !showChanges
+                                    if (showChanges && gitChanges.isEmpty()) {
+                                        onRefreshChanges()
+                                    }
+                                },
+                                modifier = Modifier.testTag("toggle_changes_button")
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Open in browser") },
+                                enabled = !conversation?.conversationUrl.isNullOrBlank(),
+                                onClick = {
+                                    showOverflow = false
+                                    conversation?.conversationUrl?.let { url ->
+                                        runCatching { uriHandler.openUri(url) }
+                                    }
+                                },
+                                modifier = Modifier.testTag("open_in_browser_button")
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Refresh events") },
+                                onClick = {
+                                    showOverflow = false
+                                    onRefresh()
+                                },
+                                modifier = Modifier.testTag("refresh_events_button")
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Rename") },
+                                onClick = {
+                                    showOverflow = false
+                                    renameText = conversation?.title ?: ""
+                                    showRename = true
+                                },
+                                modifier = Modifier.testTag("rename_conversation_button")
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showOverflow = false
+                                    showDeleteConfirm = true
+                                },
+                                modifier = Modifier.testTag("delete_conversation_button")
+                            )
+                        }
                     }
                 }
             }
@@ -439,11 +439,10 @@ fun ConversationDetailScreen(
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth()
         ) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            val toolsRowState = rememberLazyListState()
+            EdgeFadeRow(
+                state = toolsRowState,
+                modifier = Modifier.padding(vertical = 6.dp),
             ) {
                 val tools = listOf(
                     Triple("Model", "model", onOpenModel),
@@ -581,12 +580,8 @@ fun ConversationDetailScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                ) {
+                val suggestionsRowState = rememberLazyListState()
+                EdgeFadeRow(state = suggestionsRowState) {
                     items(quickSuggestions) { suggestion ->
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,

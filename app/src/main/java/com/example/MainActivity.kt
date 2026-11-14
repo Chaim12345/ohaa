@@ -13,7 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Api
-import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AdvancedRuntimeSheet
 import com.example.ui.screens.ContextSheet
@@ -125,12 +127,12 @@ fun OpenHandsApp(
               modifier = Modifier.testTag("bottom_nav_bar")
           ) {
             val tabs = listOf(
-                Triple(AppNavTab.DASHBOARD, Icons.Default.Dashboard, "Dashboard"),
+                Triple(AppNavTab.DASHBOARD, Icons.Default.Dashboard, "Home"),
                 Triple(AppNavTab.TASKS, Icons.AutoMirrored.Filled.FormatListBulleted, "Tasks"),
                 Triple(AppNavTab.NEW_TASK, Icons.Default.AddCircle, "New Task"),
                 Triple(AppNavTab.RESOURCES, Icons.Default.Folder, "Resources"),
                 Triple(AppNavTab.EXPLORER, Icons.Default.Api, "API"),
-                Triple(AppNavTab.SETTINGS, Icons.Default.Cloud, "Cloud API")
+                Triple(AppNavTab.SETTINGS, Icons.Default.Settings, "Settings")
             )
 
             tabs.forEach { (tab, icon, title) ->
@@ -139,7 +141,15 @@ fun OpenHandsApp(
                   selected = selected,
                   onClick = { viewModel.setTab(tab) },
                   icon = { Icon(imageVector = icon, contentDescription = title) },
-                  label = { Text(title) },
+                  label = {
+                    Text(
+                      text = title,
+                      fontSize = 10.sp,
+                      maxLines = 1,
+                      softWrap = false,
+                      overflow = TextOverflow.Ellipsis
+                    )
+                  },
                   colors = NavigationBarItemDefaults.colors(
                       selectedIconColor = OpenHandsPrimaryDark,
                       selectedTextColor = OpenHandsPrimaryDark,
@@ -273,6 +283,8 @@ fun OpenHandsApp(
           "context" -> ContextSheet(
               info = uiState.conversationInfo,
               isBusy = uiState.isRuntimeBusy,
+              eventCount = uiState.eventCount,
+              onLoadEventCount = { viewModel.loadEventCount() },
               onCompact = { viewModel.compactContext() },
               onDismiss = { openSheet = null }
           )
@@ -357,6 +369,7 @@ fun OpenHandsApp(
               onStartMcpOAuth = { viewModel.startMcpOAuth(it) },
               onCheckMcpOAuth = { viewModel.pollMcpOAuthStatus() },
               onCallMcpTool = { server, tool -> viewModel.callMcpTool(server, tool) },
+              onTestMcpServer = { name, json -> viewModel.testMcpServer(name, json) },
               onDismiss = { openSheet = null }
           )
           "final" -> FinalResponseSheet(
@@ -381,6 +394,7 @@ fun OpenHandsApp(
                 templates = templates,
                 connectionStatus = uiState.connectionStatus,
                 connectionHealthy = uiState.connectionHealthy,
+                totalConversationCount = uiState.totalConversationCount,
                 isLoading = uiState.isLoading,
                 isRefreshing = uiState.isRefreshing,
                 onStartNewTask = { viewModel.setTab(AppNavTab.NEW_TASK) },
@@ -438,6 +452,8 @@ fun OpenHandsApp(
                 secrets = uiState.secrets,
                 skills = uiState.skills,
                 sandboxes = uiState.sandboxes,
+                sandboxSecrets = uiState.sandboxSecrets,
+                revealedSecret = uiState.revealedSecret,
                 gitLogin = uiState.gitLogin,
                 gitOrganizations = uiState.gitOrganizations,
                 gitInstallations = uiState.gitInstallations,
@@ -455,10 +471,16 @@ fun OpenHandsApp(
                 onSaveSettings = { viewModel.saveUserSettings(it) },
                 onStoreGitToken = { provider, token -> viewModel.storeGitToken(provider, token) },
                 onUnlinkGitProvider = { viewModel.unlinkGitProvider(it) },
+                onClearGitTokens = { viewModel.clearGitProviderTokens() },
                 onCreateSecret = { n, v, d -> viewModel.createSecret(n, v, d) },
                 onDeleteSecret = { viewModel.deleteSecret(it) },
                 onDeleteSandbox = { viewModel.deleteSandbox(it) },
                 onCreateSandbox = { viewModel.createSandbox(it) },
+                onPauseSandbox = { viewModel.pauseSandbox(it) },
+                onResumeSandbox = { viewModel.resumeSandbox(it) },
+                onLoadSandboxSecrets = { viewModel.loadSandboxSecrets(it) },
+                onRevealSandboxSecret = { id, name -> viewModel.revealSandboxSecret(id, name) },
+                onClearRevealedSecret = { viewModel.clearRevealedSecret() },
                 onDeleteProfile = { viewModel.deleteProfile(it) },
                 onActivateProfile = { viewModel.activateCloudProfile(it) },
                 onSaveProfile = { name, model, base -> viewModel.saveProfile(name, model, base) },
@@ -466,7 +488,15 @@ fun OpenHandsApp(
                 selectedProfileDetail = uiState.selectedProfileDetail,
                 onPreviewProfile = { viewModel.loadProfileDetail(it) },
                 onRenameProfile = { name, newName -> viewModel.renameCloudProfile(name, newName) },
-                onInstallPlugin = { viewModel.installRuntimePlugin(it) }
+                onInstallPlugin = { viewModel.installRuntimePlugin(it) },
+                agentProfiles = uiState.agentProfileCatalog,
+                activeAgentProfileId = uiState.activeAgentProfileId,
+                onLoadAgentProfiles = { viewModel.loadCloudAgentProfiles() },
+                onSaveAgentProfile = { name, kind, server, model, effort ->
+                    viewModel.saveAgentProfile(name, kind, server, model, effort)
+                },
+                onDeleteAgentProfile = { viewModel.deleteAgentProfile(it) },
+                onActivateCloudAgentProfile = { viewModel.activateCloudAgentProfile(it) }
             )
           }
           AppNavTab.EXPLORER -> {

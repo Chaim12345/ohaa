@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.keepalive.KeepAliveService
+import com.example.data.api.ApiClient
 import com.example.data.local.AppDatabase
 import com.example.data.model.AcpEffortOptionDto
 import com.example.data.model.BashEventDto
@@ -37,6 +38,7 @@ import com.example.data.model.ProfileInfoDto
 import com.example.data.model.PromptTemplate
 import com.example.data.model.SandboxInfoDto
 import com.example.data.model.SecretDto
+import com.example.data.model.SecretNameItemDto
 import com.example.data.model.SkillInfoDto
 import com.example.data.repository.AgentServerRepository
 import com.example.data.repository.OpenHandsRepository
@@ -99,6 +101,12 @@ data class OpenHandsUiState(
     val secrets: List<SecretDto> = emptyList(),
     val skills: List<SkillInfoDto> = emptyList(),
     val sandboxes: List<SandboxInfoDto> = emptyList(),
+    val sandboxSecrets: List<SecretNameItemDto> = emptyList(),
+    val revealedSecret: String? = null,
+    /** Account-wide conversation total from the server count endpoint. */
+    val totalConversationCount: Int? = null,
+    /** Event count for the selected conversation. */
+    val eventCount: Int? = null,
     val gitLogin: String? = null,
     val agentProfiles: List<AgentProfileInfoDto> = emptyList(),
     /** Cloud agent-profile catalog (OpenHands + ACP) for the New Task picker. */
@@ -312,8 +320,10 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isRefreshing = true)
             val result = repository.refreshConversations()
+            val total = repository.countConversations().getOrNull()
             _uiState.value = _uiState.value.copy(
                 isRefreshing = false,
+                totalConversationCount = total ?: _uiState.value.totalConversationCount,
                 notificationMessage = if (result.isSuccess) "Synchronized with OpenHands Cloud" else result.exceptionOrNull()?.message
             )
         }
@@ -882,6 +892,43 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun pauseSandbox(sandboxId: String) {
+        viewModelScope.launch {
+            val result = repository.pauseSandbox(sandboxId)
+            notify(if (result.isSuccess) "Sandbox paused" else result.exceptionOrNull()?.message)
+            if (result.isSuccess) loadSandboxes()
+        }
+    }
+
+    fun resumeSandbox(sandboxId: String) {
+        viewModelScope.launch {
+            val result = repository.resumeSandbox(sandboxId)
+            notify(if (result.isSuccess) "Sandbox resumed" else result.exceptionOrNull()?.message)
+            if (result.isSuccess) loadSandboxes()
+        }
+    }
+
+    fun loadSandboxSecrets(sandboxId: String) {
+        viewModelScope.launch {
+            repository.getSandboxSecrets(sandboxId).getOrNull()?.let {
+                _uiState.value = _uiState.value.copy(sandboxSecrets = it)
+            }
+        }
+    }
+
+    fun revealSandboxSecret(sandboxId: String, name: String) {
+        viewModelScope.launch {
+            val result = repository.getSandboxSecretValue(sandboxId, name)
+            _uiState.value = _uiState.value.copy(
+                revealedSecret = result.getOrElse { it.message ?: "Failed to read secret" }
+            )
+        }
+    }
+
+    fun clearRevealedSecret() {
+        _uiState.value = _uiState.value.copy(revealedSecret = null)
+    }
+
     fun loadGitAccount() {
         viewModelScope.launch {
             repository.getGitInfo().getOrNull()?.let {
@@ -1136,6 +1183,39 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val result = repository.unlinkGitProvider(provider)
             notify(if (result.isSuccess) "Unlinked $provider" else result.exceptionOrNull()?.message)
+        }
+    }
+
+    fun clearGitProviderTokens() {
+        viewModelScope.launch {
+            val result = repository.clearGitProviderTokens()
+            notify(if (result.isSuccess) "Cleared all git tokens" else result.exceptionOrNull()?.message)
+        }
+    }
+
+    fun testMcpServer(name: String, serverJson: String) {
+        viewModelScope.launch {
+            val server = runCatching {
+                @Suppress("UNCHECKED_CAST")
+                ApiClient.moshi.adapter(Map::class.java).fromJson(serverJson) as? Map<String, Any>
+            }.getOrNull()
+            if (server == null) {
+                notify("MCP server must be a JSON object")
+                return@launch
+            }
+            val result = repository.testMcpServer(name, server)
+            _uiState.value = _uiState.value.copy(
+                lastToolOutput = result.getOrElse { it.message ?: "MCP test failed" }
+            )
+        }
+    }
+
+    fun loadEventCount() {
+        val id = _uiState.value.selectedConversationId ?: return
+        viewModelScope.launch {
+            repository.countEvents(id).getOrNull()?.let {
+                _uiState.value = _uiState.value.copy(eventCount = it)
+            }
         }
     }
 
@@ -1527,7 +1607,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                     )
                     return@launch
                 }
-                base = c.conversationUrl
+                base = ApiClient.runtimeOrigin(c.conversationUrl)
                 credential = c.sessionApiKey.orEmpty()
             } else {
                 base = repository.baseUrl

@@ -116,6 +116,29 @@ class AgentServerRepositoryTest {
     }
 
     @Test
+    fun `a conversation url carrying a path still roots runtime calls at the origin`() = runBlocking {
+        // OpenHands Cloud reports conversation_url as
+        // `<origin>/api/conversations/<id>`; the agent-server serves every route
+        // from the host root. Appending the reported path would 404 every call,
+        // so the runtime client must drop it.
+        val origin = server.url("/").toString().trimEnd('/')
+        database.conversationDao().insertConversation(
+            ConversationEntity(
+                id = "conv-path", title = "t", status = "RUNNING", selectedRepository = "org/repo",
+                createdAt = 1L, updatedAt = 1L, sandboxId = "sbx", sandboxStatus = "RUNNING",
+                conversationUrl = "$origin/api/conversations/conv-path",
+                sessionApiKey = "session-secret",
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"success":true}"""))
+
+        val result = repository.condense("conv-path")
+
+        assertTrue(result.isSuccess)
+        assertEquals("/api/conversations/conv-path/condense", server.takeRequest().path)
+    }
+
+    @Test
     fun `switch acp model posts the model id`() = runBlocking {
         seed()
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"success":true}"""))

@@ -20,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,9 +49,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.AgentProfileInfoDto
 import com.example.data.model.ProfileDetailDto
 import com.example.data.model.ProfileInfoDto
 import com.example.data.model.SandboxInfoDto
+import com.example.data.model.SecretNameItemDto
 import com.example.data.model.SecretDto
 import com.example.data.model.SkillInfoDto
 import com.example.data.model.UpdateUserSettingsRequest
@@ -66,6 +70,8 @@ fun ResourcesScreen(
     secrets: List<SecretDto>,
     skills: List<SkillInfoDto>,
     sandboxes: List<SandboxInfoDto>,
+    sandboxSecrets: List<SecretNameItemDto> = emptyList(),
+    revealedSecret: String? = null,
     gitLogin: String?,
     gitOrganizations: List<String> = emptyList(),
     gitInstallations: List<String> = emptyList(),
@@ -82,10 +88,16 @@ fun ResourcesScreen(
     onSaveSettings: (UpdateUserSettingsRequest) -> Unit,
     onStoreGitToken: (String, String) -> Unit,
     onUnlinkGitProvider: (String) -> Unit,
+    onClearGitTokens: () -> Unit = {},
     onCreateSecret: (String, String, String?) -> Unit,
     onDeleteSecret: (String) -> Unit,
     onDeleteSandbox: (String) -> Unit,
     onCreateSandbox: (String) -> Unit = {},
+    onPauseSandbox: (String) -> Unit = {},
+    onResumeSandbox: (String) -> Unit = {},
+    onLoadSandboxSecrets: (String) -> Unit = {},
+    onRevealSandboxSecret: (String, String) -> Unit = { _, _ -> },
+    onClearRevealedSecret: () -> Unit = {},
     onDeleteProfile: (String) -> Unit = {},
     onActivateProfile: (String) -> Unit = {},
     onSaveProfile: (String, String?, String?) -> Unit = { _, _, _ -> },
@@ -95,6 +107,12 @@ fun ResourcesScreen(
     onPreviewProfile: (String) -> Unit = {},
     onRenameProfile: (String, String) -> Unit = { _, _ -> },
     onInstallPlugin: (String) -> Unit = {},
+    agentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    activeAgentProfileId: String? = null,
+    onLoadAgentProfiles: () -> Unit = {},
+    onSaveAgentProfile: (String, String?, String?, String?, String?) -> Unit = { _, _, _, _, _ -> },
+    onDeleteAgentProfile: (String) -> Unit = {},
+    onActivateCloudAgentProfile: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var section by remember { mutableStateOf("Secrets") }
@@ -118,7 +136,7 @@ fun ResourcesScreen(
                         "Skills" -> onLoadSkills()
                         "Sandboxes" -> onLoadSandboxes()
                         "Git" -> { onLoadGitAccount(); onLoadGitOrganizations(); onLoadGitInstallations() }
-                        "Profiles" -> onLoadProfiles()
+                        "Profiles" -> { onLoadProfiles(); onLoadAgentProfiles() }
                         "Settings" -> { onLoadSettings(); onLoadWebClientConfig() }
                     }
                 },
@@ -164,14 +182,22 @@ fun ResourcesScreen(
             "Skills" -> SkillsSection(skills = skills, onInstallPlugin = onInstallPlugin)
             "Sandboxes" -> SandboxesSection(
                 sandboxes = sandboxes,
+                sandboxSecrets = sandboxSecrets,
+                revealedSecret = revealedSecret,
                 onDelete = onDeleteSandbox,
-                onCreate = onCreateSandbox
+                onCreate = onCreateSandbox,
+                onPause = onPauseSandbox,
+                onResume = onResumeSandbox,
+                onLoadSecrets = onLoadSandboxSecrets,
+                onRevealSecret = onRevealSandboxSecret,
+                onClearRevealed = onClearRevealedSecret
             )
             "Git" -> GitSection(
                 organizations = gitOrganizations,
                 installations = gitInstallations,
                 onStoreToken = onStoreGitToken,
-                onUnlink = onUnlinkGitProvider
+                onUnlink = onUnlinkGitProvider,
+                onClearTokens = onClearGitTokens
             )
             "Profiles" -> ProfilesSection(
                 profiles = profiles,
@@ -180,7 +206,12 @@ fun ResourcesScreen(
                 onActivate = onActivateProfile,
                 onSave = onSaveProfile,
                 onPreview = onPreviewProfile,
-                onRename = onRenameProfile
+                onRename = onRenameProfile,
+                agentProfiles = agentProfiles,
+                activeAgentProfileId = activeAgentProfileId,
+                onSaveAgentProfile = onSaveAgentProfile,
+                onDeleteAgentProfile = onDeleteAgentProfile,
+                onActivateAgentProfile = onActivateCloudAgentProfile
             )
             "Settings" -> SettingsSection(settings = userSettings, webClient = webClientConfig, onSave = onSaveSettings)
         }
@@ -203,6 +234,7 @@ private fun GitSection(
     installations: List<String>,
     onStoreToken: (String, String) -> Unit,
     onUnlink: (String) -> Unit,
+    onClearTokens: () -> Unit = {},
 ) {
     var provider by remember { mutableStateOf("github") }
     var token by remember { mutableStateOf("") }
@@ -233,6 +265,10 @@ private fun GitSection(
                 onClick = { onUnlink(provider) },
                 modifier = Modifier.testTag("git_unlink")
             ) { Text("Unlink") }
+            OutlinedButton(
+                onClick = { onClearTokens() },
+                modifier = Modifier.testTag("git_clear_tokens")
+            ) { Text("Clear all") }
         }
         Spacer(Modifier.height(10.dp))
         if (organizations.isNotEmpty()) {
@@ -259,12 +295,22 @@ private fun ProfilesSection(
     onSave: (String, String?, String?) -> Unit,
     onPreview: (String) -> Unit,
     onRename: (String, String) -> Unit,
+    agentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    activeAgentProfileId: String? = null,
+    onSaveAgentProfile: (String, String?, String?, String?, String?) -> Unit = { _, _, _, _, _ -> },
+    onDeleteAgentProfile: (String) -> Unit = {},
+    onActivateAgentProfile: (String) -> Unit = {},
 ) {
     var name by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("") }
     var renameTo by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize()) {
+    var acpName by remember { mutableStateOf("") }
+    var acpKind by remember { mutableStateOf("acp") }
+    var acpServer by remember { mutableStateOf("") }
+    var acpModel by remember { mutableStateOf("") }
+    var acpEffort by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -298,8 +344,8 @@ private fun ProfilesSection(
         if (profiles.isEmpty()) {
             EmptyHint("No saved profiles. Tap refresh.")
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(profiles) { p ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                profiles.forEach { p ->
                     ResourceRow(
                         title = p.name ?: "(unnamed)",
                         subtitle = p.model,
@@ -337,6 +383,87 @@ private fun ProfilesSection(
             Text("API key set: ${d.apiKeySet}", fontSize = 12.sp)
             Text("Model: ${d.config?.model ?: "—"}", fontSize = 12.sp)
             Text("Base URL: ${d.config?.baseUrl ?: "—"}", fontSize = 12.sp)
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Text("ACP agent profiles", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "Agent profiles select which ACP agent (Claude Code, Codex, …) runs the task.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = acpName,
+            onValueChange = { acpName = it },
+            label = { Text("Profile name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("agent_profile_name_input")
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(
+                value = acpKind,
+                onValueChange = { acpKind = it },
+                label = { Text("Agent kind") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("agent_profile_kind_input")
+            )
+            OutlinedTextField(
+                value = acpServer,
+                onValueChange = { acpServer = it },
+                label = { Text("ACP server") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("agent_profile_server_input")
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(
+                value = acpModel,
+                onValueChange = { acpModel = it },
+                label = { Text("ACP model") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("agent_profile_model_input")
+            )
+            OutlinedTextField(
+                value = acpEffort,
+                onValueChange = { acpEffort = it },
+                label = { Text("Effort") },
+                singleLine = true,
+                modifier = Modifier.weight(1f).testTag("agent_profile_effort_input")
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(
+            onClick = {
+                if (acpName.isNotBlank()) {
+                    onSaveAgentProfile(
+                        acpName,
+                        acpKind.ifBlank { null },
+                        acpServer.ifBlank { null },
+                        acpModel.ifBlank { null },
+                        acpEffort.ifBlank { null },
+                    )
+                }
+            },
+            enabled = acpName.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().testTag("agent_profile_save")
+        ) { Text("Save agent profile") }
+        Spacer(Modifier.height(8.dp))
+        if (agentProfiles.isEmpty()) {
+            EmptyHint("No agent profiles. Tap refresh.")
+        } else {
+            agentProfiles.forEach { p ->
+                val active = p.id != null && p.id == activeAgentProfileId
+                ResourceRow(
+                    title = (p.name ?: "(unnamed)") + if (active) "  ✓ active" else "",
+                    subtitle = listOfNotNull(p.agentKind, p.acpServer, p.acpModel, p.acpEffort)
+                        .joinToString(" · ").ifBlank { p.id },
+                    onClick = p.id?.let { id -> { onActivateAgentProfile(id) } },
+                    onDelete = p.name?.let { n -> { onDeleteAgentProfile(n) } }
+                )
+            }
         }
     }
 }
@@ -474,10 +601,18 @@ private fun SkillsSection(skills: List<SkillInfoDto>, onInstallPlugin: (String) 
 @Composable
 private fun SandboxesSection(
     sandboxes: List<SandboxInfoDto>,
+    sandboxSecrets: List<SecretNameItemDto>,
+    revealedSecret: String?,
     onDelete: (String) -> Unit,
     onCreate: (String) -> Unit = {},
+    onPause: (String) -> Unit = {},
+    onResume: (String) -> Unit = {},
+    onLoadSecrets: (String) -> Unit = {},
+    onRevealSecret: (String, String) -> Unit = { _, _ -> },
+    onClearRevealed: () -> Unit = {},
 ) {
     var specId by remember { mutableStateOf("") }
+    var secretsFor by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = specId,
@@ -498,14 +633,82 @@ private fun SandboxesSection(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(sandboxes) { s ->
-                    ResourceRow(
-                        title = "Sandbox ${s.id?.take(8) ?: "?"}",
-                        subtitle = "${s.status ?: "?"} · spec ${s.sandboxSpecId?.take(8) ?: "?"}",
-                        onDelete = s.id?.let { id -> { onDelete(id) } }
-                    )
+                    val running = s.status.equals("RUNNING", ignoreCase = true)
+                    Column {
+                        ResourceRow(
+                            title = "Sandbox ${s.id?.take(8) ?: "?"}",
+                            subtitle = "${s.status ?: "?"} · spec ${s.sandboxSpecId?.take(8) ?: "?"}",
+                            onDelete = s.id?.let { id -> { onDelete(id) } },
+                            onAction = s.id?.let { id ->
+                                {
+                                    IconButton(
+                                        onClick = { if (running) onPause(id) else onResume(id) },
+                                        modifier = Modifier.testTag("sandbox_toggle_${id.take(8)}")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (running) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                            contentDescription = if (running) "Pause sandbox" else "Resume sandbox",
+                                            tint = OpenHandsPrimaryDark
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = s.id?.let { id ->
+                                {
+                                    if (secretsFor == id) {
+                                        secretsFor = null
+                                    } else {
+                                        secretsFor = id
+                                        onLoadSecrets(id)
+                                    }
+                                }
+                            }
+                        )
+                        if (secretsFor == s.id && s.id != null) {
+                            Spacer(Modifier.height(4.dp))
+                            if (sandboxSecrets.isEmpty()) {
+                                EmptyHint("No secrets in this sandbox.")
+                            } else {
+                                sandboxSecrets.forEach { secret ->
+                                    val name = secret.name ?: return@forEach
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 12.dp, top = 2.dp, bottom = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = name,
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TextButton(onClick = { onRevealSecret(s.id, name) }) {
+                                            Text("Reveal", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if (revealedSecret != null) {
+        AlertDialog(
+            onDismissRequest = onClearRevealed,
+            title = { Text("Secret value", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Text(
+                    text = revealedSecret,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
+            },
+            confirmButton = { TextButton(onClick = onClearRevealed) { Text("Close") } }
+        )
     }
 }
 
@@ -514,6 +717,7 @@ private fun ResourceRow(
     title: String,
     subtitle: String?,
     onDelete: (() -> Unit)? = null,
+    onAction: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Card(
@@ -539,6 +743,7 @@ private fun ResourceRow(
                     )
                 }
             }
+            onAction?.invoke()
             if (onDelete != null) {
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)

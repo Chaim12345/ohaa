@@ -22,6 +22,7 @@ import com.example.data.model.MarketplaceSkillsPreviewDto
 import com.example.data.model.McpOAuthStartRequest
 import com.example.data.model.McpOAuthStartResponseDto
 import com.example.data.model.McpOAuthStatusResponseDto
+import com.example.data.model.McpTestRequest
 import com.example.data.model.McpToolCallRequest
 import com.example.data.model.ProfileConfigDto
 import com.example.data.model.ProfileDetailDto
@@ -69,6 +70,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -170,6 +173,28 @@ class OpenHandsRepository(
                 else ->
                     Result.failure(Exception(ApiClient.errorMessage(response)))
             }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Total conversation count for the account (`GET /api/v1/app-conversations/count`). */
+    suspend fun countConversations(): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.countConversations()
+            if (response.isSuccessful) Result.success(response.body()?.string()?.trim()?.toIntOrNull() ?: 0)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Number of events recorded for a conversation. */
+    suspend fun countEvents(conversationId: String): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.countEvents(conversationId)
+            if (response.isSuccessful) Result.success(response.body()?.string()?.trim()?.toIntOrNull() ?: 0)
+            else Result.failure(Exception(authAwareMessage(response)))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -741,6 +766,41 @@ class OpenHandsRepository(
         }
     }
 
+    /** Pauses a running sandbox, releasing compute while keeping its storage. */
+    suspend fun pauseSandbox(sandboxId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.pauseSandbox(sandboxId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Reads a single sandbox record by id. */
+    suspend fun getSandbox(sandboxId: String): Result<SandboxInfoDto> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getSandbox(sandboxId)
+            if (response.isSuccessful) response.body()?.let { Result.success(it) }
+                ?: Result.failure(Exception("Empty sandbox response"))
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Reads one secret's value from a sandbox's settings. */
+    suspend fun getSandboxSecretValue(sandboxId: String, name: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getSandboxSecretValue(sandboxId, name)
+                if (response.isSuccessful) Result.success(response.body()?.string().orEmpty())
+                else Result.failure(Exception(authAwareMessage(response)))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
     suspend fun searchSandboxSpecs(): Result<List<SandboxSpecInfoDto>> = withContext(Dispatchers.IO) {
         try {
             val response = apiService.searchSandboxSpecs()
@@ -935,6 +995,17 @@ class OpenHandsRepository(
         }
     }
 
+    /** Removes every stored git provider token for the account. */
+    suspend fun clearGitProviderTokens(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteGitProviderTokens()
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun storeGitProviderTokens(provider: String, token: String): Result<String> =
         withContext(Dispatchers.IO) {
             try {
@@ -1106,6 +1177,21 @@ class OpenHandsRepository(
                         Result.success(body?.text ?: "")
                     }
                 } else Result.failure(Exception(authAwareMessage(response)))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /** Validates an MCP server definition without persisting it. */
+    suspend fun testMcpServer(name: String, server: Map<String, Any>): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val json = ApiClient.moshi.adapter(McpTestRequest::class.java)
+                    .toJson(McpTestRequest(name = name, server = server))
+                val body = json.toRequestBody("application/json".toMediaType())
+                val response = apiService.testMcpServer(body)
+                if (response.isSuccessful) Result.success(response.body()?.string().orEmpty())
+                else Result.failure(Exception(authAwareMessage(response)))
             } catch (e: Exception) {
                 Result.failure(e)
             }

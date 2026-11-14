@@ -19,10 +19,13 @@ import java.io.File
  *
  * 3. **Real wiring** — every catalog path must appear as a genuine request-URL
  *    call site in production source. This scan deliberately EXCLUDES
- *    `EndpointCatalog.kt` itself, so listing a path in the catalog does not
- *    satisfy it: there must be a Retrofit annotation, an `endpoint(base, path)`
+ *    `EndpointCatalog.kt` itself **and the generic API Explorer**
+ *    (`ApiExplorerRepository.kt`, `ApiExplorerScreen.kt`), so neither listing a
+ *    path in the catalog nor hitting it through the runtime-path explorer
+ *    satisfies it: there must be a Retrofit annotation, an `endpoint(base, path)`
  *    call, or a path literal passed to a service method. Comments are stripped
- *    first so a path mentioned only in a comment does not count.
+ *    first so a path mentioned only in a comment does not count. A companion test
+ *    asserts the explorer contributes no call sites of its own.
  */
 class ApiCoverageTest {
 
@@ -230,6 +233,42 @@ class ApiCoverageTest {
 
     // ---- 3. real wiring ----------------------------------------------------
 
+    /**
+     * Guards the exclusion in [every catalog path is wired to a real call site
+     * in production source]: the generic API Explorer must not contribute any
+     * call site. It builds request URLs at runtime from [EndpointCatalog], so it
+     * has no literal path of its own; if one is ever added to make coverage
+     * *look* satisfied, this fails.
+     */
+    @Test
+    fun `the generic API explorer contributes no call sites of its own`() {
+        val root = listOf(File("src/main/java/com/example"), File("app/src/main/java/com/example"))
+            .firstOrNull { it.isDirectory }
+        assertTrue("could not locate production sources", root != null)
+
+        val explorerFiles = listOf("ApiExplorerRepository.kt", "ApiExplorerScreen.kt")
+        val found = linkedSetOf<String>()
+        root!!.walkTopDown()
+            .filter { it.extension == "kt" && it.name in explorerFiles }
+            .forEach { file ->
+                val text = stripComments(file.readText())
+                Regex("@(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\(\\s*\"([^\"]*)\"").findAll(text)
+                    .forEach { if (it.groupValues[1].isNotBlank()) found.add(normalize(it.groupValues[1])) }
+                Regex("endpoint\\([^,]+,\\s*\"([^\"]+)\"").findAll(text)
+                    .forEach { found.add(normalize(it.groupValues[1])) }
+                Regex("\"(/?api/[^\"\\s]*)\"").findAll(text)
+                    .forEach { found.add(normalize(it.groupValues[1])) }
+                Regex("\"(/v1/[^\"\\s]*)\"").findAll(text)
+                    .forEach { found.add(normalize(it.groupValues[1])) }
+            }
+        assertEquals(
+            "The API Explorer must not hard-code catalog paths; wiring them there " +
+                "would let an unimplemented endpoint pass the coverage test: $found",
+            emptySet<String>(),
+            found,
+        )
+    }
+
     @Test
     fun `every catalog path is wired to a real call site in production source`() {
         val root = listOf(File("src/main/java/com/example"), File("app/src/main/java/com/example"))
@@ -239,6 +278,10 @@ class ApiCoverageTest {
         val callSites = linkedSetOf<String>()
         root!!.walkTopDown()
             .filter { it.extension == "kt" && it.name != "EndpointCatalog.kt" }
+            // The generic API Explorer calls arbitrary paths at runtime; it must
+            // never be allowed to satisfy this test. Only typed bindings or
+            // explicit call sites in the real data layer count as "wired".
+            .filter { it.name != "ApiExplorerRepository.kt" && it.name != "ApiExplorerScreen.kt" }
             .forEach { file ->
                 val text = stripComments(file.readText())
                 // Retrofit annotation paths, e.g. @GET("api/v1/users/me")

@@ -145,7 +145,11 @@ class AgentServerRepository(
             ?: return Result.failure(Exception("This conversation has no runtime URL yet"))
         val key = entity.sessionApiKey?.takeIf { it.isNotBlank() }
             ?: return Result.failure(Exception("Missing sandbox session key — refresh the conversation"))
-        return Result.success(RuntimeTarget(url, key, ApiClient.agentServerFor(url, key)))
+        // The runtime serves every route from the host root; the reported
+        // conversation_url carries a `/api/conversations/<id>` path that must be
+        // dropped or appended paths (e.g. `/server_info`) 404.
+        val origin = ApiClient.runtimeOrigin(url)
+        return Result.success(RuntimeTarget(origin, key, ApiClient.agentServerFor(url, key)))
     }
 
     private fun endpoint(baseUrl: String, path: String): String {

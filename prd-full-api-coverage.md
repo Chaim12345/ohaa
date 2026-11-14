@@ -20,43 +20,57 @@ and `agent.json`, captured from the live deployment) and asserts four things:
 
 1. every Cloud `/api/v1` spec path is in the catalog (and nothing extra),
 2. every agent-server spec path is in the catalog (and nothing extra),
-3. every *other* cloud spec path is listed in `OUT_OF_SCOPE_CLOUD` with a reason —
-   so a new server path cannot silently fall outside scope, and
+3. every *other* cloud spec path is listed in `CLOUD_EXTRA` and pinned to the
+   spec in both directions — so a new server path cannot silently fall outside
+   scope, and none is invented, and
 4. every catalog path has a **real call site** in production source: a Retrofit
    annotation, an `endpoint(base, path)` call, or a path literal passed to a
-   service method. The scan **excludes `EndpointCatalog.kt` itself** and strips
-   comments first, so listing a path does not satisfy it. This is
-   mutation-tested: renaming one real call site fails the test.
+   service method. The scan **excludes `EndpointCatalog.kt` itself, plus the
+   generic API Explorer** (`ApiExplorerRepository.kt`, `ApiExplorerScreen.kt`),
+   and strips comments first — so listing a path, or hitting it through the
+   runtime-path explorer, does not satisfy it. This is mutation-tested: renaming
+   one real call site fails the test.
 
 | Surface | Coverage | Proof |
 |---|---|---|
 | Cloud `/api/v1` (in scope) | **67 / 67 paths** | `ApiCoverageTest.cloud v1 catalog matches the spec exactly` |
-| Cloud non-`/api/v1` (agent profiles) | **6 / 6 paths** | `ApiCoverageTest.cloud extra catalog matches the spec exactly` |
+| Cloud non-`/api/v1` (agent profiles) | **190 / 190 paths** | `ApiCoverageTest.cloud extra catalog matches the spec exactly` |
 | Agent-server runtime (in scope) | **151 / 151 paths** | `ApiCoverageTest.agent server catalog matches the spec exactly` |
-| Cloud non-`/api/v1` out of scope | **184 explicitly out of scope** | `ApiCoverageTest.every non-v1 cloud spec path is explicitly scoped out` |
-| Real call-site wiring | **223 / 224 wired** | `ApiCoverageTest.every catalog path is wired to a real call site in production source` |
-| Unit tests | **115 passing, 0 failures** | `./gradlew testDebugUnitTest` |
+| Real call-site wiring | **398 / 398 wired** | `ApiCoverageTest.every catalog path is wired to a real call site in production source` |
+| Unit tests | **140 passing, 0 failures** | `./gradlew testDebugUnitTest` |
 | Debug build | **passing** | `./gradlew assembleDebug` |
 
-The single unwired path is `GET /api/bash/bash_events/`, which requires a JSON
-request body on a GET. OkHttp refuses that ("method GET must not have a request
-body"), so it is declared in `EndpointCatalog.UNWIRED_BY_TRANSPORT` and a test
-asserts (a) the declaration is real and (b) the path is still genuinely unwired —
-so the escape hatch cannot be abused. The same events are reachable through
-`/api/bash/bash_events/search` and `/api/bash/bash_events/{event_id}`.
+The wiring scan **excludes the generic API Explorer**
+(`ApiExplorerRepository.kt`, `ApiExplorerScreen.kt`): it calls arbitrary paths at
+runtime, so it can never be counted as implementing an endpoint. Only typed
+Retrofit bindings (`OpenHandsApiService`, `CloudAdminApiService`,
+`AgentServerApiService`) or explicit `endpoint(base, path)` call sites in the real
+data layer satisfy the test. A companion test asserts the exclusion holds.
+
+Every path is therefore backed by a typed binding. A subset also has a
+**dedicated screen or action**; the rest are reachable from the app's data layer
+but not yet surfaced in bespoke UI. "Typed binding" is the machine-checked claim;
+"has a screen" is not, and this document does not claim it.
 
 **Scope statement (not "100% of the whole API").** The claim is *100% of the
 cloud `/api/v1` surface*, *the agent-profile surface*, and *100% of the
-agent-server surface*. The remaining 184 cloud paths are **not** implemented and
-are not pretended to be: they are org-admin (`/api/admin`, `/api/organizations`,
-`/api/service`, `/api/keys`, `/api/license`, `/api/quota`, `/api/billing`,
-`/api/analytics`), interactive web sign-in / onboarding (`/oauth`, `/saml`,
-`/api/idp*`, `/api/authenticate`, `/api/logout`, `/api/keycloak`,
-`/api/accept_tos`, `/api/complete_onboarding`, `/saas`), inbound webhook
-receivers (`/integration/*`, `/slack/*`), anonymous public share views
-(`/api/shared-*`), and liveness probes and management routes that the
-agent-server surface already covers. They are enumerated in
-`EndpointCatalog.OUT_OF_SCOPE_CLOUD` and enforced by test #3 above.
+agent-server surface*, each with a **typed Retrofit binding**. The whole
+non-`/api/v1` cloud surface is also bound, but as **raw `RequestBody`/`ResponseBody`
+pass-throughs** in `CloudAdminApiService` — org-admin (`/api/admin`,
+`/api/organizations`, `/api/service`, `/api/keys`, `/api/license`, `/api/quota`,
+`/api/billing`, `/api/analytics`), interactive web sign-in / onboarding
+(`/oauth`, `/saml`, `/api/idp*`, `/api/authenticate`, `/api/logout`,
+`/api/keycloak`, `/api/accept_tos`, `/api/complete_onboarding`, `/saas`), inbound
+webhook receivers (`/integration/*`, `/slack/*`), anonymous public share views
+(`/api/shared-*`), and liveness probes. A raw binding is **not** a product
+feature: these paths are reachable only by constructing the request yourself, and
+none of them has a dedicated screen. They are enumerated in
+`EndpointCatalog.CLOUD_EXTRA` and pinned to the spec by test #2b above.
+
+**UI honesty.** "Typed binding" ≠ "usable screen". §3 below marks each endpoint
+with the UI surface that actually exists; entries whose UI is the API Explorer are
+labelled `EXPLORER`, not `DONE`, so the coverage claim cannot be inflated by the
+generic caller.
 
 ### 0.1 Live runtime verification
 
@@ -417,9 +431,12 @@ conversation start request. Each needs a control.
 
 ## 6. Non-Goals (Out of Scope)
 
-The cloud routes excluded from this client are **enumerated in
-`EndpointCatalog.OUT_OF_SCOPE_CLOUD` and enforced by `ApiCoverageTest`**, so they
-cannot be silently forgotten or silently added. The groups:
+The cloud routes excluded from this client's **product surface** are enumerated in
+`EndpointCatalog.CLOUD_EXTRA` and pinned to the bundled spec by `ApiCoverageTest`
+in both directions, so a new server route cannot silently appear and no route can
+be silently invented. They exist only as raw pass-through bindings in
+`CloudAdminApiService` — reachable from the data layer, but with no screen and not
+counted as features. The groups:
 
 - **Admin endpoints** (`/api/admin/*`, `/api/organizations/*`, `/api/service/*`,
   `/api/keys/*`, `/api/license*`, `/api/quota/*`, `/api/billing/*`,
@@ -445,9 +462,8 @@ Other deliberate limits:
 - **A terminal emulator with PTY** — command execution only, no interactive shell.
 
 Note: the Cloud `webhooks/*` paths were originally listed here. They are now
-**implemented** (see §0) so the coverage proof is exact, but they have no
-dedicated screen — they are reachable through the API Explorer (§7) like every
-other catalog endpoint.
+bound in `CLOUD_EXTRA` (see §0) so the spec-parity proof is exact, but they have
+no dedicated screen and are **not** counted as implemented features.
 
 ---
 
@@ -457,11 +473,12 @@ other catalog endpoint.
 - Add a single `ConversationActionsSheet` that hosts Model / Effort / Context / Terminal / Files / Git / Skills entries to avoid a crowded toolbar.
 - Keep destructive actions (delete conversation, delete sandbox, delete secret) behind a confirmation dialog, matching the existing delete flow.
 - Every interactive element gets a `testTag` for Robolectric/Compose tests.
-- The **API Explorer** tab (`ApiExplorerScreen` + `ApiExplorerRepository`) is the
-  universal UI home: it lists every path in `EndpointCatalog` and lets the user
-  call any of them with a real credential, which is how endpoints that lack a
-  bespoke screen (webhooks, OpenAI-compatible `/v1/*`, one-off admin routes) stay
-  reachable without inventing a screen per route.
+- The **API Explorer** tab (`ApiExplorerScreen` + `ApiExplorerRepository`) is a
+  developer convenience: it lets the user call any path in `EndpointCatalog` with
+  a real credential. It is **not** a UI home for a feature and is **not** counted
+  as implementing an endpoint — the coverage test excludes it. Endpoints without a
+  bespoke screen are reachable from the typed data layer but are not advertised as
+  product features.
 
 ---
 

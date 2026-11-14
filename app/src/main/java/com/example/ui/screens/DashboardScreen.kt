@@ -74,6 +74,7 @@ fun DashboardScreen(
     templates: List<PromptTemplate>,
     connectionStatus: String?,
     connectionHealthy: Boolean?,
+    totalConversationCount: Int? = null,
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     onStartNewTask: () -> Unit,
@@ -113,6 +114,14 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (totalConversationCount != null) {
+                        Text(
+                            text = "$totalConversationCount conversations on the server",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("dashboard_total_count")
+                        )
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {

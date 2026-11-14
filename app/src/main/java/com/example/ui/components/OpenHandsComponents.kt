@@ -8,14 +8,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -198,12 +206,13 @@ fun TerminalCodeBlock(
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF5F56)))
-                Spacer(modifier = Modifier.width(5.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFFBD2E)))
-                Spacer(modifier = Modifier.width(5.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF27C93F)))
-                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = OpenHandsPrimaryDark,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = title,
                     color = Color.White.copy(alpha = 0.7f),
@@ -362,6 +371,80 @@ fun EventItemView(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A horizontally scrolling row of chips with an edge fade that hints there is
+ * more content off-screen.
+ *
+ * A plain [LazyRow] clips its last chip with no cue that it can be swiped, which
+ * reads as a broken/truncated label on a phone. The fade is drawn only on the
+ * side(s) that still have hidden items, and it disappears once the list is fully
+ * scrolled to that edge.
+ */
+@Composable
+fun EdgeFadeRow(
+    state: LazyListState,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp),
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(6.dp),
+    content: LazyListScope.() -> Unit,
+) {
+    val showStart by remember {
+        derivedStateOf { state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0 }
+    }
+    val showEnd by remember {
+        derivedStateOf {
+            val last = state.layoutInfo.visibleItemsInfo.lastOrNull()
+            last != null && last.index < state.layoutInfo.totalItemsCount - 1
+        }
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        LazyRow(
+            state = state,
+            horizontalArrangement = horizontalArrangement,
+            contentPadding = contentPadding,
+            modifier = Modifier.fillMaxWidth(),
+            content = content,
+        )
+        ScrollEdgeFade(
+            visible = showStart,
+            alignment = Alignment.CenterStart,
+        )
+        ScrollEdgeFade(
+            visible = showEnd,
+            alignment = Alignment.CenterEnd,
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.ScrollEdgeFade(
+    visible: Boolean,
+    alignment: Alignment,
+) {
+    val background = MaterialTheme.colorScheme.surface
+    // matchParentSize() sizes to the row without contributing to the Box's
+    // measured height; using fillMaxHeight() here would inflate the wrap-content
+    // Box to the incoming max height and push sibling content off-screen.
+    Box(modifier = Modifier.matchParentSize()) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = visible,
+            modifier = Modifier.align(alignment).fillMaxHeight().width(20.dp),
+        ) {
+            val brush = if (alignment == Alignment.CenterEnd) {
+                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    listOf(Color.Transparent, background)
+                )
+            } else {
+                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    listOf(background, Color.Transparent)
+                )
+            }
+            Box(modifier = Modifier.fillMaxSize().background(brush))
         }
     }
 }

@@ -336,6 +336,7 @@ fun RuntimeSkillsSheet(
     onStartMcpOAuth: (String) -> Unit = {},
     onCheckMcpOAuth: () -> Unit = {},
     onCallMcpTool: (String, String) -> Unit = { _, _ -> },
+    onTestMcpServer: (String, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
 ) {
     var installName by remember { mutableStateOf("") }
@@ -343,6 +344,7 @@ fun RuntimeSkillsSheet(
     var marketplaceSource by remember { mutableStateOf("") }
     var mcpName by remember { mutableStateOf("") }
     var mcpToolName by remember { mutableStateOf("") }
+    var mcpServerJson by remember { mutableStateOf("") }
     SheetScaffold(title = "Skills & plugins", onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -461,6 +463,21 @@ fun RuntimeSkillsSheet(
                 }
             }
             mcpOAuthStatus?.let { Text("Status: $it", fontSize = 11.sp) }
+
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = mcpServerJson,
+                onValueChange = { mcpServerJson = it },
+                label = { Text("MCP server JSON ({\"command\":\"...\"})") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth().testTag("mcp_server_json_input")
+            )
+            Spacer(Modifier.height(6.dp))
+            ActionChip(
+                "Test server",
+                "mcp_test",
+                enabled = mcpName.isNotBlank() && mcpServerJson.isNotBlank()
+            ) { onTestMcpServer(mcpName, mcpServerJson) }
 
             Text(
                 "Invoke MCP tool",

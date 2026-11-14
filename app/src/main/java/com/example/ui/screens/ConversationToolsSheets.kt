@@ -323,6 +323,8 @@ fun ModelSheet(
 fun ContextSheet(
     info: ConversationInfoDto?,
     isBusy: Boolean,
+    eventCount: Int? = null,
+    onLoadEventCount: () -> Unit = {},
     onCompact: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -335,7 +337,14 @@ fun ContextSheet(
             MetricRow("Context window", usage?.contextWindow?.takeIf { it > 0 }?.toString() ?: "—")
             MetricRow("Accumulated cost", info?.metrics?.accumulatedCost?.let { "$${it}" } ?: "—")
             MetricRow("Max iterations", info?.maxIterations?.toString() ?: "—")
-            Spacer(Modifier.height(12.dp))
+            MetricRow("Events", eventCount?.toString() ?: "—")
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onLoadEventCount,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth().testTag("load_event_count_button")
+            ) { Text("Refresh event count") }
+            Spacer(Modifier.height(8.dp))
             Button(
                 onClick = onCompact,
                 enabled = !isBusy,
