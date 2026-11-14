@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -59,6 +60,7 @@ fun TasksScreen(
     onSelectConversation: (String) -> Unit,
     onStartNewTask: () -> Unit,
     onRefresh: () -> Unit,
+    isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val filtered = conversations.filter { conv ->
@@ -99,11 +101,21 @@ fun TasksScreen(
                 onClick = onRefresh,
                 modifier = Modifier.testTag("refresh_tasks_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh tasks",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        color = OpenHandsPrimaryDark,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .testTag("tasks_refresh_spinner")
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh tasks",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 

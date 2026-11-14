@@ -65,6 +65,8 @@ import com.example.ui.theme.OpenHandsBorderDark
 import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
+import com.example.ui.theme.StatusReady
+import com.example.ui.theme.StatusWorking
 
 @Composable
 fun DashboardScreen(
@@ -73,6 +75,7 @@ fun DashboardScreen(
     connectionStatus: String?,
     connectionHealthy: Boolean?,
     isLoading: Boolean = false,
+    isRefreshing: Boolean = false,
     onStartNewTask: () -> Unit,
     onSelectConversation: (String) -> Unit,
     onSelectTemplate: (PromptTemplate) -> Unit,
@@ -117,11 +120,13 @@ fun DashboardScreen(
                         onClick = onRefresh,
                         modifier = Modifier.testTag("refresh_dashboard_button")
                     ) {
-                        if (isLoading) {
+                        if (isLoading || isRefreshing) {
                             CircularProgressIndicator(
                                 color = OpenHandsPrimaryDark,
                                 strokeWidth = 2.dp,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .testTag("dashboard_refresh_spinner")
                             )
                         } else {
                             Icon(
@@ -189,7 +194,7 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(if (connectionHealthy == true) Color(0xFF3FB950) else Color(0xFFF0883E))
+                                    .background(if (connectionHealthy == true) StatusReady else StatusWorking)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(

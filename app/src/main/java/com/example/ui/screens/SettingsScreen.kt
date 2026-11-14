@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -30,6 +31,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
+import com.example.ui.theme.StatusReady
+import com.example.ui.theme.StatusWorking
 
 @Composable
 fun SettingsScreen(
@@ -71,6 +76,8 @@ fun SettingsScreen(
     onClearCache: () -> Unit,
     keepAliveEnabled: Boolean = false,
     onKeepAliveChanged: (Boolean) -> Unit = {},
+    themeMode: String = "SYSTEM",
+    onThemeModeChanged: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showApiKey by remember { mutableStateOf(false) }
@@ -122,14 +129,14 @@ fun SettingsScreen(
 
         // Connection Status Banner
         if (connectionStatus != null) {
+            val healthy = connectionHealthy == true
+            val bannerColor = if (healthy) StatusReady else StatusWorking
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (connectionHealthy == true)
-                        Color(0xFF1F3526)
-                    else
-                        Color(0xFF3B271F)
+                    containerColor = bannerColor.copy(alpha = 0.14f)
                 ),
                 shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, bannerColor.copy(alpha = 0.4f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
@@ -140,16 +147,16 @@ fun SettingsScreen(
                     modifier = Modifier.padding(14.dp)
                 ) {
                     Icon(
-                        imageVector = if (connectionHealthy == true) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        imageVector = if (healthy) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = if (connectionHealthy == true) Color(0xFF3FB950) else Color(0xFFF0883E),
+                        tint = bannerColor,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = connectionStatus,
                         fontSize = 12.sp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = 16.sp,
                         fontFamily = FontFamily.Monospace
                     )
@@ -307,6 +314,66 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        // Appearance: theme selection
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("theme_card")
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        tint = OpenHandsPrimaryDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Appearance",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Match the system theme or force dark / light.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("SYSTEM" to "System", "DARK" to "Dark", "LIGHT" to "Light").forEach { (value, label) ->
+                        val selected = themeMode.equals(value, ignoreCase = true)
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onThemeModeChanged(value) },
+                            label = { Text(label) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
+                                selectedLabelColor = OpenHandsPrimaryDark
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("theme_chip_${value.lowercase()}")
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Background keep-alive toggle
         Card(

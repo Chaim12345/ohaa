@@ -79,6 +79,7 @@ data class OpenHandsUiState(
     val apiKey: String = "",
     val baseUrl: String = "https://app.all-hands.dev",
     val keepAliveEnabled: Boolean = false,
+    val themeMode: String = "SYSTEM",
     val isResuming: Boolean = false,
     // ---- runtime (agent-server) state ----
     val isRuntimeBusy: Boolean = false,
@@ -157,7 +158,8 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         OpenHandsUiState(
             apiKey = repository.apiKey,
             baseUrl = repository.baseUrl,
-            keepAliveEnabled = repository.keepAliveEnabled
+            keepAliveEnabled = repository.keepAliveEnabled,
+            themeMode = repository.themeMode
         )
     )
     val uiState: StateFlow<OpenHandsUiState> = _uiState.asStateFlow()
@@ -241,7 +243,12 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateNewTaskPrompt(prompt: String) {
-        _uiState.value = _uiState.value.copy(newTaskPrompt = prompt)
+        // Editing away from the applied template's text deselects the chip.
+        val templateStillMatches = _uiState.value.selectedTemplate?.prompt == prompt
+        _uiState.value = _uiState.value.copy(
+            newTaskPrompt = prompt,
+            selectedTemplate = if (templateStillMatches) _uiState.value.selectedTemplate else null
+        )
     }
 
     fun updateNewTaskRepo(repo: String) {
@@ -510,6 +517,12 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         } else {
             KeepAliveService.stop(getApplication())
         }
+    }
+
+    /** Persists the chosen appearance (System / Dark / Light). */
+    fun setThemeMode(mode: String) {
+        repository.themeMode = mode
+        _uiState.value = _uiState.value.copy(themeMode = mode)
     }
 
     /**

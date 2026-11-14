@@ -330,16 +330,19 @@ fun RuntimeSkillsSheet(
     marketplacePlugins: List<String> = emptyList(),
     mcpOAuthUrl: String? = null,
     mcpOAuthStatus: String? = null,
+    mcpToolOutput: String? = null,
     onLoadCloudCatalog: () -> Unit = {},
     onPreviewMarketplace: (String, String) -> Unit = { _, _ -> },
     onStartMcpOAuth: (String) -> Unit = {},
     onCheckMcpOAuth: () -> Unit = {},
+    onCallMcpTool: (String, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
 ) {
     var installName by remember { mutableStateOf("") }
     var marketplaceName by remember { mutableStateOf("") }
     var marketplaceSource by remember { mutableStateOf("") }
     var mcpName by remember { mutableStateOf("") }
+    var mcpToolName by remember { mutableStateOf("") }
     SheetScaffold(title = "Skills & plugins", onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -458,6 +461,32 @@ fun RuntimeSkillsSheet(
                 }
             }
             mcpOAuthStatus?.let { Text("Status: $it", fontSize = 11.sp) }
+
+            Text(
+                "Invoke MCP tool",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+            )
+            OutlinedTextField(
+                value = mcpToolName,
+                onValueChange = { mcpToolName = it },
+                label = { Text("Tool name (on the server above)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("mcp_tool_name_input")
+            )
+            Spacer(Modifier.height(6.dp))
+            ActionChip(
+                "Call tool",
+                "mcp_call_tool",
+                enabled = mcpName.isNotBlank() && mcpToolName.isNotBlank()
+            ) { onCallMcpTool(mcpName, mcpToolName) }
+            mcpToolOutput?.let {
+                Spacer(Modifier.height(6.dp))
+                SelectionContainer {
+                    Text(it, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
         }
     }
 }

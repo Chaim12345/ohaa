@@ -155,6 +155,7 @@ fun ModelSheet(
     cloudProfileDetail: AcpAgentProfileDto? = null,
     acpSupportsRuntimeModelSwitch: Boolean = true,
     isBusy: Boolean,
+    modelQuery: String = "",
     onSwitchProfile: (String) -> Unit,
     onSwitchModel: (String) -> Unit,
     onSwitchEffort: (String) -> Unit,
@@ -164,7 +165,7 @@ fun ModelSheet(
     onSearchModels: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(modelQuery) }
     SheetScaffold(title = "Model & effort", onDismiss = onDismiss) {
         LazyColumn {
             if (cloudAgentProfiles.isNotEmpty()) {

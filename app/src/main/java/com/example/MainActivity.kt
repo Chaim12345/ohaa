@@ -57,6 +57,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TasksScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.theme.ThemeMode
 import com.example.ui.viewmodel.AppNavTab
 import com.example.ui.viewmodel.OpenHandsViewModel
 
@@ -65,8 +66,13 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     setContent {
-      MyApplicationTheme {
-        OpenHandsApp()
+      val rootViewModel: OpenHandsViewModel = viewModel()
+      val rootState by rootViewModel.uiState.collectAsState()
+      MyApplicationTheme(
+          themeMode = runCatching { ThemeMode.valueOf(rootState.themeMode) }
+              .getOrDefault(ThemeMode.SYSTEM)
+      ) {
+        OpenHandsApp(viewModel = rootViewModel)
       }
     }
   }
@@ -254,6 +260,7 @@ fun OpenHandsApp(
               cloudProfileDetail = uiState.selectedAgentProfileDetail,
               acpSupportsRuntimeModelSwitch = selectedConv?.acpSupportsRuntimeModelSwitch ?: true,
               isBusy = uiState.isRuntimeBusy,
+              modelQuery = uiState.modelQuery,
               onSwitchProfile = { viewModel.switchProfile(it) },
               onSwitchModel = { viewModel.switchModel(it) },
               onSwitchEffort = { viewModel.switchEffort(it) },
@@ -344,10 +351,12 @@ fun OpenHandsApp(
               marketplacePlugins = uiState.marketplacePlugins,
               mcpOAuthUrl = uiState.mcpOAuthUrl,
               mcpOAuthStatus = uiState.mcpOAuthStatus,
+              mcpToolOutput = uiState.lastToolOutput,
               onLoadCloudCatalog = { viewModel.loadCloudSkillCatalog() },
               onPreviewMarketplace = { name, source -> viewModel.previewMarketplace(name, source) },
               onStartMcpOAuth = { viewModel.startMcpOAuth(it) },
               onCheckMcpOAuth = { viewModel.pollMcpOAuthStatus() },
+              onCallMcpTool = { server, tool -> viewModel.callMcpTool(server, tool) },
               onDismiss = { openSheet = null }
           )
           "final" -> FinalResponseSheet(
@@ -373,6 +382,7 @@ fun OpenHandsApp(
                 connectionStatus = uiState.connectionStatus,
                 connectionHealthy = uiState.connectionHealthy,
                 isLoading = uiState.isLoading,
+                isRefreshing = uiState.isRefreshing,
                 onStartNewTask = { viewModel.setTab(AppNavTab.NEW_TASK) },
                 onSelectConversation = { id -> viewModel.selectConversation(id) },
                 onSelectTemplate = { template -> viewModel.applyTemplate(template) },
@@ -389,7 +399,8 @@ fun OpenHandsApp(
                 onStatusFilterChanged = { status -> viewModel.setStatusFilter(status) },
                 onSelectConversation = { id -> viewModel.selectConversation(id) },
                 onStartNewTask = { viewModel.setTab(AppNavTab.NEW_TASK) },
-                onRefresh = { viewModel.refreshConversations() }
+                onRefresh = { viewModel.refreshConversations() },
+                isRefreshing = uiState.isRefreshing
             )
           }
           AppNavTab.NEW_TASK -> {
@@ -400,6 +411,7 @@ fun OpenHandsApp(
                 templates = templates,
                 isLoading = uiState.isLoading,
                 isProvisioning = uiState.isProvisioning,
+                selectedTemplateId = uiState.selectedTemplate?.id,
                 agentTypeSelection = uiState.agentTypeSelection,
                 modelText = uiState.selectedModelForTask ?: "",
                 profileText = uiState.llmProfileSelection ?: "",
@@ -485,7 +497,9 @@ fun OpenHandsApp(
                 onTestConnection = { viewModel.testConnection() },
                 onClearCache = { viewModel.clearLocalCache() },
                 keepAliveEnabled = uiState.keepAliveEnabled,
-                onKeepAliveChanged = { enabled -> viewModel.setKeepAliveEnabled(enabled) }
+                onKeepAliveChanged = { enabled -> viewModel.setKeepAliveEnabled(enabled) },
+                themeMode = uiState.themeMode,
+                onThemeModeChanged = { mode -> viewModel.setThemeMode(mode) }
             )
           }
         }

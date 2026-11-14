@@ -148,6 +148,11 @@ fun ConversationDetailScreen(
         )
     }
     val showSlashPalette = followUpText.startsWith("/") && !followUpText.contains(" ")
+    val filteredSlashCommands = remember(followUpText) {
+        val prefix = followUpText.trimStart('/').lowercase()
+        if (prefix.isEmpty()) slashCommands.entries.toList()
+        else slashCommands.entries.filter { it.key.removePrefix("/").startsWith(prefix) }
+    }
 
     fun submit(text: String) {
         val trimmed = text.trim()
@@ -609,7 +614,17 @@ fun ConversationDetailScreen(
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                             .testTag("slash_palette")
                     ) {
-                        items(slashCommands.entries.toList()) { entry ->
+                        if (filteredSlashCommands.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "No matching command — press send to try \"$followUpText\"",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                        items(filteredSlashCommands) { entry ->
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(10.dp),

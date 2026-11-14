@@ -113,6 +113,11 @@ class OpenHandsRepository(
         get() = prefs.getBoolean("keep_alive_enabled", false)
         set(value) = prefs.edit().putBoolean("keep_alive_enabled", value).apply()
 
+    /** Persisted appearance selection; defaults to following the system theme. */
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "SYSTEM") ?: "SYSTEM"
+        set(value) = prefs.edit().putString("theme_mode", value).apply()
+
     private var apiService: OpenHandsApiService = createApiService()
 
     /** Typed client for the non-`/api/v1` Cloud surface (admin, keys, billing, …). */

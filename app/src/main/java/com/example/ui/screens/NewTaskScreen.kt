@@ -67,6 +67,7 @@ fun NewTaskScreen(
     templates: List<PromptTemplate>,
     isLoading: Boolean,
     isProvisioning: Boolean = false,
+    selectedTemplateId: String? = null,
     agentTypeSelection: String = "default",
     modelText: String = "",
     profileText: String = "",
@@ -156,10 +157,15 @@ fun NewTaskScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             items(templates) { template ->
+                val selected = template.id == selectedTemplateId
                 Surface(
-                    color = MaterialTheme.colorScheme.surface,
+                    color = if (selected) OpenHandsPrimaryDark.copy(alpha = 0.18f)
+                    else MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.outline
+                    ),
                     modifier = Modifier
                         .clickable { onSelectTemplate(template) }
                         .testTag("blueprint_chip_${template.id}")
@@ -183,8 +189,9 @@ fun NewTaskScreen(
                         Text(
                             text = template.title,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) OpenHandsPrimaryDark
+                            else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
