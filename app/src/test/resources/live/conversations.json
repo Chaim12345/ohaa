@@ -1,0 +1,145 @@
+{
+  "items": [
+    {
+      "id": "a9506a706916486485129a781055960e",
+      "selected_repository": "Chaim12345/ohaa",
+      "selected_branch": "main",
+      "git_provider": "github",
+      "title": "Reviewing App for Missing and Broken Parts",
+      "title_generation": null,
+      "trigger": "gui",
+      "pr_number": [],
+      "pull_requests": [],
+      "additional_repositories": [],
+      "llm_model": "openhands/deepseek-v4.1-flash",
+      "agent_kind": "openhands",
+      "metrics": {
+        "model_name": "default",
+        "accumulated_cost": 0.19305797839999994,
+        "max_budget_per_task": null,
+        "accumulated_token_usage": {
+          "model": "",
+          "prompt_tokens": 19678352,
+          "completion_tokens": 147901,
+          "cache_read_tokens": 19322752,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "context_window": 1000000,
+          "per_turn_token": 106871,
+          "response_id": ""
+        }
+      },
+      "parent_conversation_id": null,
+      "sub_conversation_ids": [],
+      "public": null,
+      "tags": {
+        "archiveworkspacepath": "<redacted>",
+        "agentprofileid": "<redacted>",
+        "agentprofilerevision": "<redacted>",
+        "repo_name": "Chaim12345/ohaa",
+        "git_provider": "github",
+        "selected_branch": "main",
+        "clientsource": "agentcanvas"
+      },
+      "created_at": "2026-11-14T11:54:58.634819Z",
+      "updated_at": "2026-11-14T12:45:35.929321Z",
+      "sandbox_status": "RUNNING",
+      "execution_status": "running",
+      "acp_available_models": [],
+      "acp_supports_runtime_model_switch": false,
+      "acp_server": null,
+      "repositories": [
+        {
+          "repository": "Chaim12345/ohaa",
+          "branch": "main",
+          "git_provider": "github",
+          "folder": "ohaa",
+          "path": "/workspace/project/ohaa",
+          "status": "cloned",
+          "error": null,
+          "primary": true
+        }
+      ],
+      "launched_agent_profile": {
+        "agent_profile_id": "e2b45bc9-2c35-4686-94b0-6d33d48517c3",
+        "revision": 1,
+        "secret_refs": null,
+        "integration_refs": null,
+        "llm_profile_ref": null
+      }
+    },
+    {
+      "id": "f2510a16c8da4c0bac3fb6517e9ea7af",
+      "selected_repository": "Chaim12345/claude-plugins",
+      "selected_branch": "main",
+      "git_provider": "github",
+      "title": "Use the shopping il plugin to Compre supermarke...",
+      "title_generation": {
+        "status": "fallback",
+        "title": "Use the shopping il plugin to Compre supermarke...",
+        "deadline_at": "2026-11-11T19:25:41.802288Z"
+      },
+      "trigger": "gui",
+      "pr_number": [],
+      "pull_requests": [],
+      "additional_repositories": [],
+      "llm_model": "openhands/deepseek-v4.1-flash",
+      "agent_kind": "openhands",
+      "metrics": {
+        "model_name": "default",
+        "accumulated_cost": 0.0198025408,
+        "max_budget_per_task": null,
+        "accumulated_token_usage": {
+          "model": "",
+          "prompt_tokens": 54366876,
+          "completion_tokens": 374374,
+          "cache_read_tokens": 53215616,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "context_window": 1000000,
+          "per_turn_token": 93423,
+          "response_id": ""
+        }
+      },
+      "parent_conversation_id": null,
+      "sub_conversation_ids": [],
+      "public": null,
+      "tags": {
+        "archiveworkspacepath": "<redacted>",
+        "agentprofileid": "<redacted>",
+        "agentprofilerevision": "<redacted>",
+        "repo_name": "Chaim12345/claude-plugins",
+        "git_provider": "github",
+        "selected_branch": "main",
+        "clientsource": "agentcanvas"
+      },
+      "created_at": "2026-11-11T19:26:01.306721Z",
+      "updated_at": "2026-11-12T00:39:33.619732Z",
+      "sandbox_status": "PAUSED",
+      "execution_status": null,
+      "acp_available_models": [],
+      "acp_supports_runtime_model_switch": false,
+      "acp_server": null,
+      "repositories": [
+        {
+          "repository": "Chaim12345/claude-plugins",
+          "branch": "main",
+          "git_provider": "github",
+          "folder": "claude-plugins",
+          "path": "/workspace/project/claude-plugins",
+          "status": "cloned",
+          "error": null,
+          "primary": true
+        }
+      ],
+      "launched_agent_profile": {
+        "agent_profile_id": "e2b45bc9-2c35-4686-94b0-6d33d48517c3",
+        "revision": 1,
+        "secret_refs": null,
+        "integration_refs": null,
+        "llm_profile_ref": null
+      }
+    }
+  ],
+  "next_page_id": "2"
+}

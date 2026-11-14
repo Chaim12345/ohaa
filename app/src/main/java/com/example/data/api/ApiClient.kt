@@ -1,24 +1,24 @@
 package com.example.data.api
 
-import com.example.data.model.ConversationResponse
-import com.example.data.model.EventResponse
+import com.example.BuildConfig
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
-import org.json.JSONArray
 import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
+/**
+ * Adds the OpenHands Cloud credential. The V1 app server authenticates with
+ * `Authorization: Bearer <api-key>`.
+ */
 class AuthInterceptor(private val apiKeyProvider: () -> String) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val original = chain.request()
-        val builder = original.newBuilder()
+        val builder = chain.request().newBuilder()
             .header("User-Agent", "OpenHands-Android-Cloud/1.0")
             .header("Accept", "application/json")
 
@@ -26,22 +26,94 @@ class AuthInterceptor(private val apiKeyProvider: () -> String) : Interceptor {
         if (key.isNotEmpty()) {
             builder.header("Authorization", "Bearer $key")
         }
+        return chain.proceed(builder.build())
+    }
+}
 
+/**
+ * Adds the per-sandbox agent-server credential. Runtime calls authenticate with
+ * `X-Session-API-Key`, not the Cloud Bearer token.
+ */
+class SessionAuthInterceptor(private val keyProvider: () -> String) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val builder = chain.request().newBuilder()
+            .header("User-Agent", "OpenHands-Android-Cloud/1.0")
+            .header("Accept", "application/json")
+
+        val key = keyProvider().trim()
+        if (key.isNotEmpty()) {
+            builder.header("X-Session-API-Key", key)
+        }
         return chain.proceed(builder.build())
     }
 }
 
 object ApiClient {
-    private val moshi: Moshi = Moshi.Builder()
+    val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
+
+    /**
+     * Builds a runtime client. The base URL is a placeholder because every call
+     * passes a full `@Url` (the sandbox host differs per conversation).
+     */
+    fun createAgentServer(
+        baseUrlProvider: () -> String,
+        sessionKeyProvider: () -> String
+    ): AgentServerApiService {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
+
+        val client = OkHttpClient.Builder()
+            .addInterceptor(SessionAuthInterceptor(sessionKeyProvider))
+            .addInterceptor(logging)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(normalizeBaseUrl(baseUrlProvider()))
+            .client(client)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(AgentServerApiService::class.java)
+    }
+
+    private val agentServerCache = java.util.concurrent.ConcurrentHashMap<String, AgentServerApiService>()
+
+    /**
+     * Returns a cached runtime client bound to one conversation's host and
+     * session key. The cache key includes the key itself so a rotated key
+     * produces a fresh client rather than a stale credential.
+     */
+    fun agentServerFor(conversationUrl: String, sessionKey: String): AgentServerApiService {
+        val base = normalizeBaseUrl(conversationUrl)
+        val cacheKey = "$base|$sessionKey"
+        return agentServerCache.getOrPut(cacheKey) {
+            createAgentServer(
+                baseUrlProvider = { base },
+                sessionKeyProvider = { sessionKey }
+            )
+        }
+    }
 
     fun create(
         baseUrlProvider: () -> String,
         apiKeyProvider: () -> String
     ): OpenHandsApiService {
+        // Full body logging would leak conversation content into release logs.
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
         }
 
         val client = OkHttpClient.Builder()
@@ -52,94 +124,43 @@ object ApiClient {
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
 
-        var sanitizedUrl = baseUrlProvider().trim()
-        if (!sanitizedUrl.startsWith("http://") && !sanitizedUrl.startsWith("https://")) {
-            sanitizedUrl = "https://$sanitizedUrl"
-        }
-        if (!sanitizedUrl.endsWith("/")) {
-            sanitizedUrl = "$sanitizedUrl/"
-        }
-
         return Retrofit.Builder()
-            .baseUrl(sanitizedUrl)
+            .baseUrl(normalizeBaseUrl(baseUrlProvider()))
             .client(client)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(OpenHandsApiService::class.java)
     }
 
-    fun parseConversation(rawJson: String): ConversationResponse? {
-        return try {
-            val adapter = moshi.adapter(ConversationResponse::class.java)
-            adapter.fromJson(rawJson)
+    fun normalizeBaseUrl(raw: String): String {
+        var url = raw.trim()
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://$url"
+        }
+        if (!url.endsWith("/")) {
+            url = "$url/"
+        }
+        return url
+    }
+
+    /** Extracts a human-readable message from a FastAPI error body. */
+    fun errorMessage(response: retrofit2.Response<*>): String {
+        val body = try {
+            response.errorBody()?.string()
         } catch (e: Exception) {
             null
         }
-    }
-
-    fun parseConversationList(rawJson: String): List<ConversationResponse> {
-        val list = mutableListOf<ConversationResponse>()
-        try {
-            val trimmed = rawJson.trim()
-            val adapter = moshi.adapter(ConversationResponse::class.java)
-            if (trimmed.startsWith("[")) {
-                val jsonArray = JSONArray(trimmed)
-                for (i in 0 until jsonArray.length()) {
-                    val itemStr = jsonArray.getJSONObject(i).toString()
-                    adapter.fromJson(itemStr)?.let { list.add(it) }
+        if (!body.isNullOrBlank()) {
+            try {
+                val json = JSONObject(body)
+                val detail = json.opt("detail")
+                if (detail != null && detail.toString() != "null") {
+                    return "HTTP ${response.code()}: ${detail.toString().take(300)}"
                 }
-            } else if (trimmed.startsWith("{")) {
-                val jsonObject = JSONObject(trimmed)
-                val array = when {
-                    jsonObject.has("conversations") -> jsonObject.getJSONArray("conversations")
-                    jsonObject.has("items") -> jsonObject.getJSONArray("items")
-                    jsonObject.has("results") -> jsonObject.getJSONArray("results")
-                    else -> null
-                }
-                if (array != null) {
-                    for (i in 0 until array.length()) {
-                        val itemStr = array.getJSONObject(i).toString()
-                        adapter.fromJson(itemStr)?.let { list.add(it) }
-                    }
-                } else {
-                    // Single conversation object
-                    adapter.fromJson(trimmed)?.let { list.add(it) }
-                }
+            } catch (_: Exception) {
+                return "HTTP ${response.code()}: ${body.take(300)}"
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
-        return list
-    }
-
-    fun parseEventList(rawJson: String): List<EventResponse> {
-        val list = mutableListOf<EventResponse>()
-        try {
-            val trimmed = rawJson.trim()
-            val adapter = moshi.adapter(EventResponse::class.java)
-            if (trimmed.startsWith("[")) {
-                val jsonArray = JSONArray(trimmed)
-                for (i in 0 until jsonArray.length()) {
-                    val itemStr = jsonArray.getJSONObject(i).toString()
-                    adapter.fromJson(itemStr)?.let { list.add(it) }
-                }
-            } else if (trimmed.startsWith("{")) {
-                val jsonObject = JSONObject(trimmed)
-                val array = when {
-                    jsonObject.has("events") -> jsonObject.getJSONArray("events")
-                    jsonObject.has("items") -> jsonObject.getJSONArray("items")
-                    else -> null
-                }
-                if (array != null) {
-                    for (i in 0 until array.length()) {
-                        val itemStr = array.getJSONObject(i).toString()
-                        adapter.fromJson(itemStr)?.let { list.add(it) }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return list
+        return "HTTP ${response.code()} ${response.message()}"
     }
 }

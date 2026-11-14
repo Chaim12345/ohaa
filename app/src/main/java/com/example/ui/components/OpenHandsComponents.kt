@@ -75,10 +75,11 @@ fun StatusBadge(
     modifier: Modifier = Modifier
 ) {
     val (color, icon) = when (status) {
-        ConversationStatus.WORKING, ConversationStatus.RUNNING -> Pair(StatusWorking, Icons.Default.PlayArrow)
+        ConversationStatus.RUNNING -> Pair(StatusWorking, Icons.Default.PlayArrow)
         ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusReady, Icons.Default.CheckCircle)
         ConversationStatus.WAITING_FOR_SANDBOX, ConversationStatus.PREPARING_REPOSITORY,
         ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusWaiting, Icons.Default.HourglassTop)
+        ConversationStatus.AWAITING_CONFIRMATION -> Pair(StatusWaiting, Icons.Default.HourglassTop)
         ConversationStatus.ERROR -> Pair(StatusError, Icons.Default.Error)
         ConversationStatus.PAUSED -> Pair(StatusPaused, Icons.Default.BugReport)
         ConversationStatus.UNKNOWN -> Pair(StatusPaused, Icons.Default.BugReport)

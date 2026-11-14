@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.ConversationStatus
 import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.StatusBadge
+import com.example.ui.formatRelativeTime
 import com.example.ui.theme.OpenHandsPrimaryDark
 
 @Composable
@@ -158,8 +159,10 @@ fun TasksScreen(
                 )
             }
             val filterOptions = listOf(
-                ConversationStatus.WORKING,
+                ConversationStatus.RUNNING,
+                ConversationStatus.AWAITING_CONFIRMATION,
                 ConversationStatus.READY,
+                ConversationStatus.PAUSED,
                 ConversationStatus.FINISHED,
                 ConversationStatus.ERROR
             )
@@ -284,19 +287,20 @@ fun TasksScreen(
                                 Spacer(modifier = Modifier.weight(1f))
 
                                 Text(
-                                    text = "${conv.messageCount} msgs",
+                                    text = formatRelativeTime(conv.updatedAt),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
-                            if (!conv.lastMessage.isNullOrBlank()) {
+                            if (!conv.branch.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = conv.lastMessage,
-                                    fontSize = 12.sp,
+                                    text = "branch: ${conv.branch}",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }

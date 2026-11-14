@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +60,7 @@ import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
 import com.example.ui.components.StatMetricCard
 import com.example.ui.components.StatusBadge
+import com.example.ui.formatRelativeTime
 import com.example.ui.theme.OpenHandsBorderDark
 import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsSecondaryDark
@@ -70,6 +72,7 @@ fun DashboardScreen(
     templates: List<PromptTemplate>,
     connectionStatus: String?,
     connectionHealthy: Boolean?,
+    isLoading: Boolean = false,
     onStartNewTask: () -> Unit,
     onSelectConversation: (String) -> Unit,
     onSelectTemplate: (PromptTemplate) -> Unit,
@@ -77,9 +80,9 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val activeCount = conversations.count { it.status == ConversationStatus.WORKING || it.status == ConversationStatus.RUNNING }
-    val readyCount = conversations.count { it.status == ConversationStatus.READY || it.status == ConversationStatus.FINISHED }
-    val totalCount = conversations.size
+    val activeCount = conversations.count { it.status == ConversationStatus.RUNNING }
+    val finishedCount = conversations.count { it.status == ConversationStatus.FINISHED }
+    val readyCount = conversations.count { it.status == ConversationStatus.READY }
 
     LazyColumn(
         modifier = modifier
@@ -114,11 +117,19 @@ fun DashboardScreen(
                         onClick = onRefresh,
                         modifier = Modifier.testTag("refresh_dashboard_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh data",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = OpenHandsPrimaryDark,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh data",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     IconButton(
                         onClick = onOpenSettings,
@@ -239,10 +250,18 @@ fun DashboardScreen(
                 )
                 StatMetricCard(
                     title = "Finished Tasks",
-                    value = readyCount.toString(),
-                    subtitle = "Verified & Passed",
+                    value = finishedCount.toString(),
+                    subtitle = "Completed Runs",
                     icon = Icons.Default.CheckCircleOutline,
                     accentColor = OpenHandsTertiaryDark,
+                    modifier = Modifier.weight(1f)
+                )
+                StatMetricCard(
+                    title = "Ready",
+                    value = readyCount.toString(),
+                    subtitle = "Awaiting Instruction",
+                    icon = Icons.Default.Memory,
+                    accentColor = OpenHandsPrimaryDark,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -333,6 +352,54 @@ fun DashboardScreen(
             }
         }
 
+        if (conversations.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dashboard_empty_state")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeveloperBoard,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(30.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (connectionHealthy == false) {
+                                "Not connected to OpenHands Cloud"
+                            } else {
+                                "No agent executions yet"
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (connectionHealthy == false) {
+                                "Add your API key under Cloud API settings, then refresh."
+                            } else {
+                                "Launch a task to start your first sandboxed agent run."
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
         items(conversations.take(5)) { conv ->
             Card(
                 colors = CardDefaults.cardColors(
@@ -390,17 +457,18 @@ fun DashboardScreen(
                         }
 
                         Text(
-                            text = "${conv.messageCount} actions",
+                            text = "Updated ${formatRelativeTime(conv.updatedAt)}",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    if (!conv.lastMessage.isNullOrBlank()) {
+                    if (!conv.branch.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = conv.lastMessage,
-                            fontSize = 12.sp,
+                            text = "branch: ${conv.branch}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.PlayArrow
@@ -59,10 +60,19 @@ import com.example.ui.theme.OpenHandsTertiaryDark
 fun NewTaskScreen(
     promptText: String,
     repoText: String,
+    branchText: String = "",
     templates: List<PromptTemplate>,
     isLoading: Boolean,
+    isProvisioning: Boolean = false,
+    agentTypeSelection: String = "default",
+    modelText: String = "",
+    profileText: String = "",
     onPromptChanged: (String) -> Unit,
     onRepoChanged: (String) -> Unit,
+    onBranchChanged: (String) -> Unit = {},
+    onAgentTypeChanged: (String) -> Unit = {},
+    onModelChanged: (String) -> Unit = {},
+    onProfileChanged: (String) -> Unit = {},
     onSelectTemplate: (PromptTemplate) -> Unit,
     onLaunchTask: () -> Unit,
     modifier: Modifier = Modifier
@@ -233,6 +243,39 @@ fun NewTaskScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
+        // Target Branch
+        Text(
+            text = "Target Branch (Optional)",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = branchText,
+            onValueChange = onBranchChanged,
+            placeholder = { Text("e.g. main") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.CallSplit,
+                    contentDescription = null,
+                    tint = OpenHandsPrimaryDark
+                )
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = OpenHandsPrimaryDark,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("target_branch_input")
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
         // Task Prompt
         Text(
             text = "Agent Task Instructions",
@@ -270,6 +313,77 @@ fun NewTaskScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Advanced agent options
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = "Agent & Model (advanced)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("default" to "Standard", "plan" to "Plan").forEach { (value, label) ->
+                        val selected = agentTypeSelection == value
+                        Surface(
+                            color = if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .clickable { onAgentTypeChanged(value) }
+                                .testTag("agent_type_$value")
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 12.sp,
+                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = modelText,
+                    onValueChange = onModelChanged,
+                    label = { Text("LLM model (optional)") },
+                    placeholder = { Text("e.g. claude-sonnet-4-5-20250929") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = OpenHandsPrimaryDark,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("new_task_model_input")
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = profileText,
+                    onValueChange = onProfileChanged,
+                    label = { Text("LLM profile (optional)") },
+                    placeholder = { Text("Saved profile name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = OpenHandsPrimaryDark,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("new_task_profile_input")
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // How OpenHands works card
         Card(
             colors = CardDefaults.cardColors(
@@ -301,7 +415,7 @@ fun NewTaskScreen(
         // Launch Button
         Button(
             onClick = onLaunchTask,
-            enabled = !isLoading && promptText.isNotBlank(),
+            enabled = !isLoading && !isProvisioning && promptText.isNotBlank(),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = OpenHandsPrimaryDark
@@ -318,7 +432,7 @@ fun NewTaskScreen(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Initializing Cloud Sandbox...")
+                Text("Submitting task...")
             } else {
                 Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -327,6 +441,23 @@ fun NewTaskScreen(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
+                )
+            }
+        }
+
+        if (isProvisioning) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    color = OpenHandsPrimaryDark,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Provisioning sandbox. The task opens automatically when ready.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

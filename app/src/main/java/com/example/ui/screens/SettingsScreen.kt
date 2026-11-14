@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -68,6 +69,8 @@ fun SettingsScreen(
     onSaveConfig: () -> Unit,
     onTestConnection: () -> Unit,
     onClearCache: () -> Unit,
+    keepAliveEnabled: Boolean = false,
+    onKeepAliveChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showApiKey by remember { mutableStateOf(false) }
@@ -300,6 +303,52 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Background keep-alive toggle
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("keep_alive_card")
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = null,
+                        tint = OpenHandsPrimaryDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Keep sandboxes alive",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Pings each running sandbox every 10 minutes so OpenHands does not pause it after 20 minutes of inactivity.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 15.sp
+                        )
+                    }
+                    Switch(
+                        checked = keepAliveEnabled,
+                        onCheckedChange = onKeepAliveChanged,
+                        modifier = Modifier.testTag("keep_alive_switch")
+                    )
+                }
             }
         }
 

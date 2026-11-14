@@ -13,23 +13,43 @@ data class ConversationEntity(
     val title: String,
     val status: String,
     val selectedRepository: String?,
+    val selectedBranch: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
-    val cost: Double = 0.0,
-    val messageCount: Int = 1,
-    val lastMessage: String? = null
+    val conversationUrl: String? = null,
+    val sandboxId: String? = null,
+    /** Raw `sandbox_status` (STARTING/RUNNING/PAUSED/ERROR/MISSING) for lifecycle decisions. */
+    val sandboxStatus: String? = null,
+    /** Agent-server key for runtime calls (`X-Session-API-Key`). Sensitive. */
+    val sessionApiKey: String? = null,
+    /** "openhands" or "acp". Drives which switch endpoint the UI uses. */
+    val agentKind: String? = null,
+    val llmModel: String? = null,
+    val acpServer: String? = null,
+    val acpSupportsRuntimeModelSwitch: Boolean = false,
+    /** Comma-free JSON array of ACPModelInfo as returned by the server. */
+    val acpAvailableModelsJson: String? = null,
+    val executionStatus: String? = null,
 ) {
     fun toDomain(): OpenHandsConversation {
         return OpenHandsConversation(
             id = id,
             title = title,
-            status = ConversationStatus.fromString(status),
+            status = ConversationStatus.fromName(status),
             repository = selectedRepository,
+            branch = selectedBranch,
             createdAt = createdAt,
             updatedAt = updatedAt,
-            cost = cost,
-            messageCount = messageCount,
-            lastMessage = lastMessage
+            conversationUrl = conversationUrl,
+            sandboxId = sandboxId,
+            sandboxStatus = sandboxStatus,
+            sessionApiKey = sessionApiKey,
+            agentKind = agentKind,
+            llmModel = llmModel,
+            acpServer = acpServer,
+            acpSupportsRuntimeModelSwitch = acpSupportsRuntimeModelSwitch,
+            acpAvailableModelsJson = acpAvailableModelsJson,
+            executionStatus = executionStatus,
         )
     }
 
@@ -40,11 +60,19 @@ data class ConversationEntity(
                 title = model.title,
                 status = model.status.name,
                 selectedRepository = model.repository,
+                selectedBranch = model.branch,
                 createdAt = model.createdAt,
                 updatedAt = model.updatedAt,
-                cost = model.cost,
-                messageCount = model.messageCount,
-                lastMessage = model.lastMessage
+                conversationUrl = model.conversationUrl,
+                sandboxId = model.sandboxId,
+                sandboxStatus = model.sandboxStatus,
+                sessionApiKey = model.sessionApiKey,
+                agentKind = model.agentKind,
+                llmModel = model.llmModel,
+                acpServer = model.acpServer,
+                acpSupportsRuntimeModelSwitch = model.acpSupportsRuntimeModelSwitch,
+                acpAvailableModelsJson = model.acpAvailableModelsJson,
+                executionStatus = model.executionStatus,
             )
         }
     }
@@ -59,7 +87,13 @@ data class AgentEventEntity(
     val actionType: String?,
     val content: String,
     val detail: String?,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    /**
+     * Raw ISO-8601 wire timestamp. Millisecond [timestamp] collides for events
+     * emitted in the same second, so this lexicographic key breaks ties in the
+     * original chronological order.
+     */
+    val sortKey: String = ""
 ) {
     fun toDomain(): AgentEvent {
         return AgentEvent(
