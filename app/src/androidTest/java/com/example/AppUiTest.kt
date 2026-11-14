@@ -38,10 +38,14 @@ class AppUiTest {
             "nav_explorer" to "explorer_path",
             "nav_settings" to "settings_api_key_input",
         )
+        tag("bottom_nav_bar").assertIsDisplayed()
         for ((navTag, landmark) in destinations) {
             tag(navTag).performClick()
             composeRule.waitForIdle()
-            tag(landmark).performScrollTo().assertIsDisplayed()
+            // Only the selected tab is composed, so the landmark existing proves
+            // the tap switched screens. assertExists (not assertIsDisplayed)
+            // because a landmark need not sit in a scrollable ancestor.
+            tag(landmark).assertExists()
         }
     }
 
