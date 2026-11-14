@@ -99,7 +99,7 @@ class ApiCoverageTest {
     @Test
     fun `every non-v1 cloud spec path is explicitly scoped out`() {
         val others = cloudSpec().filter { !it.startsWith("/api/v1") }.toSet()
-        val unclassified = others - EndpointCatalog.OUT_OF_SCOPE_CLOUD
+        val unclassified = others - EndpointCatalog.OUT_OF_SCOPE_CLOUD - EndpointCatalog.CLOUD_EXTRA
         assertEquals(
             "Cloud spec paths neither implemented nor declared out of scope: $unclassified",
             emptySet<String>(),
@@ -111,6 +111,16 @@ class ApiCoverageTest {
             emptySet<String>(),
             stale,
         )
+    }
+
+    @Test
+    fun `cloud extra catalog matches the spec exactly`() {
+        // The non-v1 cloud paths we implement (agent profiles) must all be real
+        // spec paths, and vice versa — CLOUD_EXTRA is not a place to invent paths.
+        val others = cloudSpec().filter { !it.startsWith("/api/v1") }.toSet()
+        val bogus = EndpointCatalog.CLOUD_EXTRA - others
+        assertEquals("CLOUD_EXTRA paths not in the cloud spec: $bogus", emptySet<String>(), bogus)
+        assertTrue("CLOUD_EXTRA should not be empty", EndpointCatalog.CLOUD_EXTRA.isNotEmpty())
     }
 
     // ---- 3. real wiring ----------------------------------------------------
@@ -139,7 +149,7 @@ class ApiCoverageTest {
                     .forEach { callSites.add(normalize(it.groupValues[1])) }
             }
 
-        val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.AGENT_SERVER
+        val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.CLOUD_EXTRA + EndpointCatalog.AGENT_SERVER
         val unwired = all
             .filter { it !in callSites }
             .filter { it !in EndpointCatalog.UNWIRED_BY_TRANSPORT }
@@ -156,7 +166,7 @@ class ApiCoverageTest {
         // The declaration must not become a dumping ground: each entry must exist
         // in the catalog, and must genuinely have no call site (so it cannot be
         // used to hide a path that is actually wired).
-        val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.AGENT_SERVER
+        val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.CLOUD_EXTRA + EndpointCatalog.AGENT_SERVER
         val bogus = EndpointCatalog.UNWIRED_BY_TRANSPORT - all
         assertEquals("UNWIRED_BY_TRANSPORT entries not in the catalog: $bogus", emptySet<String>(), bogus)
 

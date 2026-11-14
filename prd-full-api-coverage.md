@@ -31,10 +31,11 @@ and `agent.json`, captured from the live deployment) and asserts four things:
 | Surface | Coverage | Proof |
 |---|---|---|
 | Cloud `/api/v1` (in scope) | **67 / 67 paths** | `ApiCoverageTest.cloud v1 catalog matches the spec exactly` |
+| Cloud non-`/api/v1` (agent profiles) | **6 / 6 paths** | `ApiCoverageTest.cloud extra catalog matches the spec exactly` |
 | Agent-server runtime (in scope) | **151 / 151 paths** | `ApiCoverageTest.agent server catalog matches the spec exactly` |
-| Cloud non-`/api/v1` | **190 explicitly out of scope** | `ApiCoverageTest.every non-v1 cloud spec path is explicitly scoped out` |
-| Real call-site wiring | **217 / 218 wired** | `ApiCoverageTest.every catalog path is wired to a real call site in production source` |
-| Unit tests | **105 passing, 0 failures** | `./gradlew testDebugUnitTest` |
+| Cloud non-`/api/v1` out of scope | **184 explicitly out of scope** | `ApiCoverageTest.every non-v1 cloud spec path is explicitly scoped out` |
+| Real call-site wiring | **223 / 224 wired** | `ApiCoverageTest.every catalog path is wired to a real call site in production source` |
+| Unit tests | **115 passing, 0 failures** | `./gradlew testDebugUnitTest` |
 | Debug build | **passing** | `./gradlew assembleDebug` |
 
 The single unwired path is `GET /api/bash/bash_events/`, which requires a JSON
@@ -45,15 +46,16 @@ so the escape hatch cannot be abused. The same events are reachable through
 `/api/bash/bash_events/search` and `/api/bash/bash_events/{event_id}`.
 
 **Scope statement (not "100% of the whole API").** The claim is *100% of the
-cloud `/api/v1` surface* and *100% of the agent-server surface*. The remaining
-190 cloud paths are **not** implemented and are not pretended to be: they are
-org-admin (`/api/admin`, `/api/organizations`, `/api/service`, `/api/keys`,
-`/api/license`, `/api/quota`, `/api/billing`, `/api/analytics`), interactive web
-sign-in / onboarding (`/oauth`, `/saml`, `/api/idp*`, `/api/authenticate`,
-`/api/logout`, `/api/keycloak`, `/api/accept_tos`, `/api/complete_onboarding`,
-`/saas`), inbound webhook receivers (`/integration/*`, `/slack/*`), anonymous
-public share views (`/api/shared-*`), and liveness probes and management routes
-that the agent-server surface already covers. They are enumerated in
+cloud `/api/v1` surface*, *the agent-profile surface*, and *100% of the
+agent-server surface*. The remaining 184 cloud paths are **not** implemented and
+are not pretended to be: they are org-admin (`/api/admin`, `/api/organizations`,
+`/api/service`, `/api/keys`, `/api/license`, `/api/quota`, `/api/billing`,
+`/api/analytics`), interactive web sign-in / onboarding (`/oauth`, `/saml`,
+`/api/idp*`, `/api/authenticate`, `/api/logout`, `/api/keycloak`,
+`/api/accept_tos`, `/api/complete_onboarding`, `/saas`), inbound webhook
+receivers (`/integration/*`, `/slack/*`), anonymous public share views
+(`/api/shared-*`), and liveness probes and management routes that the
+agent-server surface already covers. They are enumerated in
 `EndpointCatalog.OUT_OF_SCOPE_CLOUD` and enforced by test #3 above.
 
 ### 0.1 Live runtime verification
@@ -248,7 +250,7 @@ Legend: **DONE** = shipped and machine-verified by `ApiCoverageTest` · **NO** =
 | `GET /api/conversations/{runtime_id}/git/commits`, `/git/commits/{sha}/changes` | DONE | Git panel → commit history (commits DONE; per-commit changes TODO) |
 | `POST /api/git/repositories/search` (agent-server) | DONE | Repo search from sandbox |
 | `GET /api/acp/models` | DONE | Model sheet → ACP model list (per-session) |
-| `GET /api/agent-profiles`, `/api/profiles`, `/api/meta-profiles` (+ activate) | DONE | agent-profiles list + activate DONE; profiles/meta TODO |
+| `GET /api/agent-profiles` (+ activate/deactivate/rename/materialize) | DONE | New Task → ACP picker (list); account activate. In-scope `CLOUD_EXTRA` |
 | `GET /api/llm/models`, `/api/llm/models/verified` | DONE | Model sheet catalog |
 | `GET /api/llm/providers`, `/api/llm/provider-connections` | DONE | Settings → provider connections |
 | `GET /api/skills/installed`, `/api/skills/catalog`, `/api/skills/marketplace` | DONE | Detail → Skills sheet |
@@ -313,8 +315,8 @@ conversation start request. Each needs a control.
 **Description:** As a user, I want to run Claude Code / Codex / Gemini CLI inside a sandbox and pick a reasoning effort.
 
 **Acceptance Criteria:**
-- [ ] New Task has an "Agent" picker: OpenHands (default) or ACP server list.
-- [ ] When ACP is chosen, the ACP server, model, and effort fields appear.
+- [x] New Task has an "ACP agent" picker listing the account's ACP profiles (Claude Code, Codex, Gemini CLI, Kimi, OpenCode, custom), loaded from `GET /api/agent-profiles`.
+- [ ] When ACP is chosen, the ACP server, model, and effort fields appear (profile body via `GET /api/agent-profiles/{name}`).
 - [ ] For a running ACP conversation, the Model sheet shows `acp_available_models` from the conversation record and effort chips from the runtime.
 - [ ] Switching calls `switch_acp_model` / `switch_acp_effort` and reflects the new value.
 - [ ] If `acp_supports_runtime_model_switch` is false, the switch controls are disabled with an explanation.

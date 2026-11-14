@@ -10,6 +10,8 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ConversationEntity
 import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AcpModelInfoDto
+import com.example.data.model.AcpAgentProfileDto
+import com.example.data.model.AgentProfileInfoDto
 import com.example.data.model.GitOrganizationsDto
 import com.example.data.model.GitProviderTokenRequest
 import com.example.data.model.InstalledSkillDto
@@ -24,6 +26,8 @@ import com.example.data.model.ProfileConfigDto
 import com.example.data.model.ProfileDetailDto
 import com.example.data.model.ProfileMutationDto
 import com.example.data.model.RenameProfileRequest
+import com.example.data.model.RenameAgentProfileRequest
+import com.example.data.model.SaveAgentProfileRequest
 import com.example.data.model.RepositoryDetailDto
 import com.example.data.model.SaveProfileRequest
 import com.example.data.model.SecretNameItemDto
@@ -494,6 +498,106 @@ class OpenHandsRepository(
             } else {
                 Result.failure(Exception(authAwareMessage(response)))
             }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ---- agent profiles (cloud; used by the New Task ACP picker) -----------
+
+    /**
+     * Lists every agent profile. The New Task screen filters to the ACP ones
+     * (`agent_kind == "acp"`) so a task can be started on Claude Code, Codex,
+     * Gemini CLI, Kimi, OpenCode, or any custom ACP server.
+     */
+    suspend fun listAgentProfiles(): Result<List<AgentProfileInfoDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.listAgentProfiles()
+            if (response.isSuccessful) {
+                Result.success(response.body()?.profiles.orEmpty())
+            } else {
+                Result.failure(Exception(authAwareMessage(response)))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Reads one agent profile body so the ACP server/model/effort are visible. */
+    suspend fun getAgentProfile(name: String): Result<AcpAgentProfileDto> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getAgentProfile(name)
+            if (response.isSuccessful) {
+                Result.success(response.body()?.profile ?: AcpAgentProfileDto())
+            } else {
+                Result.failure(Exception(authAwareMessage(response)))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Creates or replaces an agent profile. */
+    suspend fun saveAgentProfile(request: SaveAgentProfileRequest): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.saveAgentProfile(request.name, request)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Deletes an agent profile by name. */
+    suspend fun deleteAgentProfile(name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deleteAgentProfile(name)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Renames an agent profile. */
+    suspend fun renameAgentProfile(name: String, newName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.renameAgentProfile(name, RenameAgentProfileRequest(newName))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Makes an agent profile the active one for the account. */
+    suspend fun activateAgentProfile(profileId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.activateAgentProfile(profileId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Clears the active agent profile for the account. */
+    suspend fun deactivateAgentProfile(profileId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.deactivateAgentProfile(profileId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Materializes a stored profile into a runnable definition. */
+    suspend fun materializeAgentProfile(name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.materializeAgentProfile(name)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception(authAwareMessage(response)))
         } catch (e: Exception) {
             Result.failure(e)
         }

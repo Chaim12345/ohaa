@@ -17,7 +17,9 @@ import com.example.data.model.SkillPageDto
 import com.example.data.model.McpToolCallResultDto
 import com.example.data.model.ProfileDetailDto
 import com.example.data.model.ProfileMutationDto
+import com.example.data.model.RenameAgentProfileRequest
 import com.example.data.model.RenameProfileRequest
+import com.example.data.model.SaveAgentProfileRequest
 import com.example.data.model.RepositoryDetailDto
 import com.example.data.model.SaveProfileRequest
 import com.example.data.model.SecretNamesDto
@@ -25,6 +27,8 @@ import com.example.data.model.StartTaskPageResponse
 import com.example.data.model.UpdateUserSettingsRequest
 import com.example.data.model.UserSettingsDto
 import com.example.data.model.WebClientConfigDto
+import com.example.data.model.AcpAgentProfileDetailDto
+import com.example.data.model.AgentProfileListDto
 import com.example.data.model.BranchPageResponse
 import com.example.data.model.ConversationPageResponse
 import com.example.data.model.ConversationResponse
@@ -518,4 +522,44 @@ interface OpenHandsApiService {
     suspend fun webhookGetSecret(
         @Query("access_token") accessToken: String? = null,
     ): Response<ResponseBody>
+
+    // ---- agent profiles (OpenHands + ACP, e.g. claude-code, codex) ---------
+
+    /** Lists agent profiles so the New Task screen can offer an ACP backend. */
+    @GET("api/agent-profiles")
+    suspend fun listAgentProfiles(): Response<AgentProfileListDto>
+
+    /** Reads one agent profile body (ACP server, model, effort, command). */
+    @GET("api/agent-profiles/{name}")
+    suspend fun getAgentProfile(@Path("name") name: String): Response<AcpAgentProfileDetailDto>
+
+    /** Creates or replaces an agent profile by name. */
+    @POST("api/agent-profiles/{name}")
+    suspend fun saveAgentProfile(
+        @Path("name") name: String,
+        @Body body: SaveAgentProfileRequest,
+    ): Response<ResponseBody>
+
+    /** Deletes an agent profile by name. */
+    @DELETE("api/agent-profiles/{name}")
+    suspend fun deleteAgentProfile(@Path("name") name: String): Response<ResponseBody>
+
+    /** Renames an agent profile. */
+    @POST("api/agent-profiles/{name}/rename")
+    suspend fun renameAgentProfile(
+        @Path("name") name: String,
+        @Body body: RenameAgentProfileRequest,
+    ): Response<ResponseBody>
+
+    /** Makes an agent profile the active one for the account. */
+    @POST("api/agent-profiles/{profile_id}/activate")
+    suspend fun activateAgentProfile(@Path("profile_id") profileId: String): Response<ResponseBody>
+
+    /** Clears the active agent profile for the account. */
+    @POST("api/agent-profiles/{profile_id}/deactivate")
+    suspend fun deactivateAgentProfile(@Path("profile_id") profileId: String): Response<ResponseBody>
+
+    /** Materializes a stored profile into a runnable definition. */
+    @POST("api/agent-profiles/{name}/materialize")
+    suspend fun materializeAgentProfile(@Path("name") name: String): Response<ResponseBody>
 }

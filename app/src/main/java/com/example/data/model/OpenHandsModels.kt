@@ -460,12 +460,51 @@ data class AgentProfileInfoDto(
     @param:Json(name = "acp_server") val acpServer: String? = null,
     @param:Json(name = "acp_model") val acpModel: String? = null,
     @param:Json(name = "acp_effort") val acpEffort: String? = null,
+    @param:Json(name = "scope") val scope: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
 data class AgentProfileListDto(
     @param:Json(name = "profiles") val profiles: List<AgentProfileInfoDto>? = null,
     @param:Json(name = "active_agent_profile_id") val activeAgentProfileId: String? = null,
+)
+
+/** One ACP agent profile body (`GET /api/agent-profiles/{name}` → `profile`). */
+@JsonClass(generateAdapter = true)
+data class AcpAgentProfileDto(
+    @param:Json(name = "schema_version") val schemaVersion: Int? = null,
+    @param:Json(name = "agent_kind") val agentKind: String? = null,
+    @param:Json(name = "id") val id: String? = null,
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "revision") val revision: Int? = null,
+    @param:Json(name = "acp_server") val acpServer: String? = null,
+    @param:Json(name = "acp_model") val acpModel: String? = null,
+    @param:Json(name = "acp_effort") val acpEffort: String? = null,
+    @param:Json(name = "acp_session_mode") val acpSessionMode: String? = null,
+    @param:Json(name = "acp_command") val acpCommand: String? = null,
+)
+
+/** `GET /api/agent-profiles/{name}` response (typed ACP profile body). */
+@JsonClass(generateAdapter = true)
+data class AcpAgentProfileDetailDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "profile") val profile: AcpAgentProfileDto? = null,
+    @param:Json(name = "scope") val scope: String? = null,
+)
+
+/**
+ * Body for `POST /api/agent-profiles/{name}`. Only `name` is required; the rest
+ * are sent when present so an ACP profile can be created from the app.
+ */
+@JsonClass(generateAdapter = true)
+data class SaveAgentProfileRequest(
+    @param:Json(name = "name") val name: String,
+    @param:Json(name = "agent_kind") val agentKind: String? = null,
+    @param:Json(name = "acp_server") val acpServer: String? = null,
+    @param:Json(name = "acp_model") val acpModel: String? = null,
+    @param:Json(name = "acp_effort") val acpEffort: String? = null,
+    @param:Json(name = "acp_session_mode") val acpSessionMode: String? = null,
+    @param:Json(name = "acp_command") val acpCommand: String? = null,
 )
 
 /** `GET /server_info` — used to show live idle time and the reap threshold. */

@@ -21,7 +21,9 @@ import com.example.data.model.UserSettingsDto
 import com.example.data.model.WebClientConfigDto
 
 import com.example.data.model.AcpModelInfoDto
+import com.example.data.model.AcpAgentProfileDto
 import com.example.data.model.AgentProfileInfoDto
+import com.example.data.model.SaveAgentProfileRequest
 import com.example.data.model.AgentEvent
 import com.example.data.model.ConversationInfoDto
 import com.example.data.model.ConversationStatus
@@ -98,6 +100,8 @@ data class OpenHandsUiState(
     val sandboxes: List<SandboxInfoDto> = emptyList(),
     val gitLogin: String? = null,
     val agentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    /** Cloud agent-profile catalog (OpenHands + ACP) for the New Task picker. */
+    val agentProfileCatalog: List<AgentProfileInfoDto> = emptyList(),
     // ---- new-task options ----
     val agentTypeSelection: String = "default",
     val llmProfileSelection: String? = null,
@@ -856,6 +860,64 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setAgentProfileSelection(profileId: String?) {
         _uiState.value = _uiState.value.copy(agentProfileSelection = profileId)
+    }
+
+    /** Loads the cloud agent-profile catalog (OpenHands + ACP) for New Task. */
+    fun loadCloudAgentProfiles() {
+        viewModelScope.launch {
+            repository.listAgentProfiles().getOrNull()?.let {
+                _uiState.value = _uiState.value.copy(agentProfileCatalog = it)
+            }
+        }
+    }
+
+    /** Reads one agent profile body (ACP server/model/effort) for preview. */
+    fun loadAgentProfileDetail(name: String, onLoaded: (AcpAgentProfileDto) -> Unit = {}) {
+        viewModelScope.launch {
+            repository.getAgentProfile(name).getOrNull()?.let(onLoaded)
+        }
+    }
+
+    /** Creates or replaces an agent profile from the app. */
+    fun saveAgentProfile(
+        name: String,
+        agentKind: String? = "acp",
+        acpServer: String? = null,
+        acpModel: String? = null,
+        acpEffort: String? = null,
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRuntimeBusy = true)
+            val result = repository.saveAgentProfile(
+                SaveAgentProfileRequest(
+                    name = name,
+                    agentKind = agentKind,
+                    acpServer = acpServer,
+                    acpModel = acpModel,
+                    acpEffort = acpEffort,
+                )
+            )
+            _uiState.value = _uiState.value.copy(isRuntimeBusy = false)
+            notify(if (result.isSuccess) "Agent profile saved" else result.exceptionOrNull()?.message)
+            if (result.isSuccess) loadCloudAgentProfiles()
+        }
+    }
+
+    /** Deletes a cloud agent profile by name. */
+    fun deleteAgentProfile(name: String) {
+        viewModelScope.launch {
+            val result = repository.deleteAgentProfile(name)
+            notify(if (result.isSuccess) "Agent profile deleted" else result.exceptionOrNull()?.message)
+            if (result.isSuccess) loadCloudAgentProfiles()
+        }
+    }
+
+    /** Activates a cloud agent profile for the account. */
+    fun activateCloudAgentProfile(profileId: String) {
+        viewModelScope.launch {
+            val result = repository.activateAgentProfile(profileId)
+            notify(if (result.isSuccess) "Agent profile activated" else result.exceptionOrNull()?.message)
+        }
     }
 
     fun setSelectedModelForTask(model: String?) {

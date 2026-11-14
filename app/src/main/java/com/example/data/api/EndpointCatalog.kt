@@ -276,9 +276,28 @@ object EndpointCatalog {
         "/v1/responses",
     )
 
+    /**
+     * Cloud paths outside `/api/v1` that this client *does* implement, with a
+     * real call site. Kept separate from [CLOUD_V1] because the spec-parity test
+     * pins [CLOUD_V1] to exactly the `/api/v1` prefix.
+     *
+     *  - `/api/agent-profiles*` — the agent-profile CRUD surface (OpenHands and
+     *    ACP). The New Task screen lists it to offer an ACP backend (Claude Code,
+     *    Codex, Gemini CLI, Kimi, OpenCode, custom) and to read the profile body
+     *    for the ACP server/model/effort. Reached with the Cloud Bearer token.
+     */
+    val CLOUD_EXTRA: Set<String> = setOf(
+        "/api/agent-profiles",
+        "/api/agent-profiles/{}",
+        "/api/agent-profiles/{}/activate",
+        "/api/agent-profiles/{}/deactivate",
+        "/api/agent-profiles/{}/materialize",
+        "/api/agent-profiles/{}/rename",
+    )
+
     // Cloud paths that are deliberately NOT implemented by this client, with the
     // reason. This is not a dumping ground: a test asserts that every non-v1 path
-    // in the bundled cloud spec is either in CLOUD_V1 or here, so a new server
+    // in the bundled cloud spec is either in CLOUD_EXTRA or here, so a new server
     // path cannot silently slip out of scope.
     //
     // Out of scope for a personal, sandbox-centric phone client:
@@ -289,8 +308,8 @@ object EndpointCatalog {
     //    onboarding flows a phone client delegates to the browser.
     //  - integration, slack: inbound webhook receivers for server-to-server use.
     //  - shared-conversations, shared-events: anonymous public share views.
-    //  - tools/catalog, agent-profiles, users/app: also served by the per-sandbox
-    //    agent-server surface, which this app uses directly (see AGENT_SERVER).
+    //  - tools/catalog, users/app: also served by the per-sandbox agent-server
+    //    surface, which this app uses directly (see AGENT_SERVER).
     //  - alive, health, ready, server_info: liveness probes polled on the
     //    agent-server surface instead.
     val OUT_OF_SCOPE_CLOUD: Set<String> = setOf(
@@ -328,12 +347,6 @@ object EndpointCatalog {
         "/api/admin/users/{}/enable",
         "/api/admin/verified-models",
         "/api/admin/verified-models/{}/{}",
-        "/api/agent-profiles",
-        "/api/agent-profiles/{}",
-        "/api/agent-profiles/{}/materialize",
-        "/api/agent-profiles/{}/rename",
-        "/api/agent-profiles/{}/activate",
-        "/api/agent-profiles/{}/deactivate",
         "/api/analytics/events",
         "/api/authenticate",
         "/api/billing/cancel",

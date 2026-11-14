@@ -349,12 +349,16 @@ fun OpenHandsApp(
                 agentTypeSelection = uiState.agentTypeSelection,
                 modelText = uiState.selectedModelForTask ?: "",
                 profileText = uiState.llmProfileSelection ?: "",
+                agentProfiles = uiState.agentProfileCatalog,
+                agentProfileSelection = uiState.agentProfileSelection,
                 onPromptChanged = { p -> viewModel.updateNewTaskPrompt(p) },
                 onRepoChanged = { r -> viewModel.updateNewTaskRepo(r) },
                 onBranchChanged = { b -> viewModel.updateNewTaskBranch(b) },
                 onAgentTypeChanged = { viewModel.setAgentTypeSelection(it) },
                 onModelChanged = { viewModel.setSelectedModelForTask(it.ifBlank { null }) },
                 onProfileChanged = { viewModel.setLlmProfileSelection(it.ifBlank { null }) },
+                onAgentProfileChanged = { viewModel.setAgentProfileSelection(it) },
+                onLoadAgentProfiles = { viewModel.loadCloudAgentProfiles() },
                 onSelectTemplate = { t -> viewModel.applyTemplate(t) },
                 onLaunchTask = {
                   viewModel.createNewTask { convId ->

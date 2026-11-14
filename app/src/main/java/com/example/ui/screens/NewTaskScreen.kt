@@ -41,6 +41,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.AgentProfileInfoDto
 import com.example.data.model.PromptTemplate
 import com.example.ui.theme.OpenHandsBorderDark
 import com.example.ui.theme.OpenHandsPrimaryDark
@@ -67,16 +70,26 @@ fun NewTaskScreen(
     agentTypeSelection: String = "default",
     modelText: String = "",
     profileText: String = "",
+    agentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    agentProfileSelection: String? = null,
     onPromptChanged: (String) -> Unit,
     onRepoChanged: (String) -> Unit,
     onBranchChanged: (String) -> Unit = {},
     onAgentTypeChanged: (String) -> Unit = {},
     onModelChanged: (String) -> Unit = {},
     onProfileChanged: (String) -> Unit = {},
+    onAgentProfileChanged: (String?) -> Unit = {},
+    onLoadAgentProfiles: () -> Unit = {},
     onSelectTemplate: (PromptTemplate) -> Unit,
     onLaunchTask: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // ACP backends (claude-code, codex, gemini-cli, kimi-code, opencode, custom)
+    // are selected by profile; picking one sends `agent_profile_id` at start.
+    val acpProfiles = remember(agentProfiles) {
+        agentProfiles.filter { it.agentKind.equals("acp", true) || it.acpServer != null }
+    }
+    LaunchedEffect(Unit) { onLoadAgentProfiles() }
     val quickRepos = listOf(
         "All-Hands-AI/OpenHands",
         "octocat/Hello-World",
@@ -379,6 +392,70 @@ fun NewTaskScreen(
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("new_task_profile_input")
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "ACP agent (optional)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Run Claude Code, Codex, Gemini CLI, Kimi, OpenCode or a " +
+                        "custom ACP server instead of the default OpenHands agent.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (acpProfiles.isEmpty()) {
+                    Text(
+                        text = "No ACP agent profiles found on your account.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("new_task_acp_empty")
+                    )
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.testTag("new_task_acp_picker")
+                    ) {
+                        acpProfiles.forEach { p ->
+                            val selected = agentProfileSelection == p.id
+                            val subtitle = listOfNotNull(p.acpServer, p.acpModel)
+                                .joinToString(" · ")
+                                .ifBlank { p.agentKind ?: "acp" }
+                            val subtitleText = if (p.scope != null) "$subtitle · ${p.scope}" else subtitle
+                            Surface(
+                                color = if (selected) OpenHandsPrimaryDark
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onAgentProfileChanged(if (selected) null else p.id)
+                                    }
+                                    .testTag("new_task_acp_profile_${p.id ?: p.name}")
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = p.name ?: p.id ?: "ACP profile",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (selected) Color.White
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = subtitleText,
+                                        fontSize = 10.sp,
+                                        color = if (selected) Color.White.copy(alpha = 0.8f)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
