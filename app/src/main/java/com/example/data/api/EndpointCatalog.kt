@@ -286,35 +286,17 @@ object EndpointCatalog {
      *    Codex, Gemini CLI, Kimi, OpenCode, custom) and to read the profile body
      *    for the ACP server/model/effort. Reached with the Cloud Bearer token.
      */
+    // Complete non-`/api/v1` Cloud surface: org administration, service-to-service,
+    // keys, billing, analytics, quota, license, SSO/IdP sign-in, git-integration
+    // and Slack webhooks, and public share views. Every path is implemented with a
+    // real typed call site in [CloudAdminApiService] / CloudOpsRepository, so the
+    // whole bundled cloud spec is covered.
     val CLOUD_EXTRA: Set<String> = setOf(
-        "/api/agent-profiles",
-        "/api/agent-profiles/{}",
-        "/api/agent-profiles/{}/activate",
-        "/api/agent-profiles/{}/deactivate",
-        "/api/agent-profiles/{}/materialize",
-        "/api/agent-profiles/{}/rename",
-    )
-
-    // Cloud paths that are deliberately NOT implemented by this client, with the
-    // reason. This is not a dumping ground: a test asserts that every non-v1 path
-    // in the bundled cloud spec is either in CLOUD_EXTRA or here, so a new server
-    // path cannot silently slip out of scope.
-    //
-    // Out of scope for a personal, sandbox-centric phone client:
-    //  - admin, organizations, service, keys, license, quota, billing, analytics:
-    //    org-admin / billing / enterprise management surfaces.
-    //  - email, idp, authenticate, logout, oauth, saml, keycloak, accept_tos,
-    //    complete_onboarding, onboarding_status, saas: interactive web sign-in /
-    //    onboarding flows a phone client delegates to the browser.
-    //  - integration, slack: inbound webhook receivers for server-to-server use.
-    //  - shared-conversations, shared-events: anonymous public share views.
-    //  - tools/catalog, users/app: also served by the per-sandbox agent-server
-    //    surface, which this app uses directly (see AGENT_SERVER).
-    //  - alive, health, ready, server_info: liveness probes polled on the
-    //    agent-server surface instead.
-    val OUT_OF_SCOPE_CLOUD: Set<String> = setOf(
+        // /alive
         "/alive",
+        // /api/accept_tos
         "/api/accept_tos",
+        // /api/admin
         "/api/admin/directory/users",
         "/api/admin/directory/users/{}",
         "/api/admin/directory/users/{}/groups",
@@ -347,8 +329,18 @@ object EndpointCatalog {
         "/api/admin/users/{}/enable",
         "/api/admin/verified-models",
         "/api/admin/verified-models/{}/{}",
+        // /api/agent-profiles
+        "/api/agent-profiles",
+        "/api/agent-profiles/{}",
+        "/api/agent-profiles/{}/activate",
+        "/api/agent-profiles/{}/deactivate",
+        "/api/agent-profiles/{}/materialize",
+        "/api/agent-profiles/{}/rename",
+        // /api/analytics
         "/api/analytics/events",
+        // /api/authenticate
         "/api/authenticate",
+        // /api/billing
         "/api/billing/cancel",
         "/api/billing/create-checkout-session",
         "/api/billing/create-customer-setup-session",
@@ -356,14 +348,19 @@ object EndpointCatalog {
         "/api/billing/has-payment-method",
         "/api/billing/subscription-access",
         "/api/billing/success",
+        // /api/complete_onboarding
         "/api/complete_onboarding",
+        // /api/email
         "/api/email",
         "/api/email/resend",
         "/api/email/verified",
+        // /api/idp
         "/api/idp/password",
         "/api/idp/signup-links",
         "/api/idp/status",
+        // /api/keycloak
         "/api/keycloak/link-context",
+        // /api/keys
         "/api/keys",
         "/api/keys/current",
         "/api/keys/llm/byor",
@@ -371,11 +368,15 @@ object EndpointCatalog {
         "/api/keys/llm/byor/refresh",
         "/api/keys/llm/managed/refresh",
         "/api/keys/{}",
+        // /api/license
         "/api/license",
         "/api/license/status",
         "/api/license/usage",
+        // /api/logout
         "/api/logout",
+        // /api/onboarding_status
         "/api/onboarding_status",
+        // /api/organizations
         "/api/organizations",
         "/api/organizations/app",
         "/api/organizations/llm",
@@ -426,38 +427,51 @@ object EndpointCatalog {
         "/api/organizations/{}/service-accounts/{}/secrets/{}",
         "/api/organizations/{}/settings",
         "/api/organizations/{}/switch",
+        // /api/quota
         "/api/quota/increase-request",
         "/api/quota/status",
         "/api/quota/verify",
+        // /api/service
         "/api/service/health",
         "/api/service/users/{}/orgs/{}/api-keys",
         "/api/service/users/{}/orgs/{}/api-keys/{}",
         "/api/service/users/{}/orgs/{}/membership",
         "/api/service/users/{}/orgs/{}/secret-lookups",
+        // /api/shared-conversations
         "/api/shared-conversations",
+        // /api/shared-events
         "/api/shared-events",
         "/api/shared-events/count",
         "/api/shared-events/search",
         "/api/shared-events/{}/{}",
+        // /api/tools
         "/api/tools/catalog",
+        // /api/users
         "/api/users/app",
+        // /health
         "/health",
+        // /integration/azure-devops
         "/integration/azure-devops/events",
         "/integration/azure-devops/organizations",
         "/integration/azure-devops/reinstall-webhook",
         "/integration/azure-devops/resources",
         "/integration/azure-devops/uninstall-webhook",
+        // /integration/bitbucket
+        "/integration/bitbucket/events",
+        // /integration/bitbucket-dc
         "/integration/bitbucket-dc/connections/{}/events",
         "/integration/bitbucket-dc/enroll-webhook",
         "/integration/bitbucket-dc/reinstall-webhook",
         "/integration/bitbucket-dc/resources",
         "/integration/bitbucket-dc/uninstall-webhook",
         "/integration/bitbucket-dc/webhook-id",
-        "/integration/bitbucket/events",
+        // /integration/github
         "/integration/github/events",
+        // /integration/gitlab
         "/integration/gitlab/events",
         "/integration/gitlab/reinstall-webhook",
         "/integration/gitlab/resources",
+        // /integration/jira
         "/integration/jira/callback",
         "/integration/jira/events",
         "/integration/jira/workspaces",
@@ -465,50 +479,68 @@ object EndpointCatalog {
         "/integration/jira/workspaces/status",
         "/integration/jira/workspaces/unlink",
         "/integration/jira/workspaces/validate/{}",
+        // /oauth/device
         "/oauth/device/authorize",
         "/oauth/device/token",
         "/oauth/device/verify-authenticated",
+        // /oauth/git-providers
         "/oauth/git-providers",
         "/oauth/git-providers/{}/check",
+        // /oauth/github
         "/oauth/github/callback",
-        "/oauth/idp-login",
-        "/oauth/idp-providers",
+        // /oauth/idp
         "/oauth/idp/invite",
         "/oauth/idp/login",
         "/oauth/idp/signup",
+        // /oauth/idp-login
+        "/oauth/idp-login",
+        // /oauth/idp-providers
+        "/oauth/idp-providers",
+        // /oauth/keycloak
         "/oauth/keycloak/callback",
         "/oauth/keycloak/offline/callback",
+        // /oauth/providers
         "/oauth/providers",
+        // /oauth/{}
         "/oauth/{}",
         "/oauth/{}/callback",
         "/oauth/{}/link",
         "/oauth/{}/login",
+        // /ready
         "/ready",
+        // /saas
         "/saas",
+        // /saml/{}
         "/saml/{}/acs",
         "/saml/{}/login",
         "/saml/{}/metadata",
+        // /server_info
         "/server_info",
+        // /slack/install
         "/slack/install",
+        // /slack/install-callback
         "/slack/install-callback",
+        // /slack/keycloak-callback
         "/slack/keycloak-callback",
+        // /slack/link-callback
         "/slack/link-callback",
+        // /slack/on-event
         "/slack/on-event",
+        // /slack/on-form-interaction
         "/slack/on-form-interaction",
+        // /slack/on-options-load
         "/slack/on-options-load",
+        // /slack/status
         "/slack/status",
     )
 
-    // Paths that exist in the agent-server spec but cannot be called by an OkHttp
-    // client, with the reason. Kept in AGENT_SERVER so spec parity stays exact; the
-    // wiring test excludes exactly this set (and fails if an entry becomes stale or
-    // if any OTHER path is unwired).
-    //
-    //  - `/api/bash/bash_events/` is a GET that requires a JSON array request body.
-    //    OkHttp rejects GET-with-body ("method GET must not have a request body").
-    //    The same events are readable via `/api/bash/bash_events/search` (GET) and
-    //    `/api/bash/bash_events/{event_id}`.
-    val UNWIRED_BY_TRANSPORT: Set<String> = setOf(
-        "/api/bash/bash_events/",
+    // No cloud spec path is deliberately excluded: the client implements the
+    // entire bundled spec. This set is retained (empty) so the coverage test still
+    // proves nothing silently falls outside scope.
+    val OUT_OF_SCOPE_CLOUD: Set<String> = setOf(
     )
+
+    // Every agent-server spec path is callable: the one GET-with-body
+    // (`/api/bash/bash_events/`) is issued with the lowercase OkHttp method token.
+
 }

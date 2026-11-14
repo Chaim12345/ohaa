@@ -132,6 +132,37 @@ object ApiClient {
             .create(OpenHandsApiService::class.java)
     }
 
+    /**
+     * Typed client for the non-`/api/v1` Cloud surface (org admin, keys,
+     * billing, analytics, quota, license, SSO/IdP, integrations, Slack, public
+     * shares). Shares the Cloud Bearer credential with [create].
+     */
+    fun createCloudAdmin(
+        baseUrlProvider: () -> String,
+        apiKeyProvider: () -> String
+    ): CloudAdminApiService {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(apiKeyProvider))
+            .addInterceptor(logging)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+        return Retrofit.Builder()
+            .baseUrl(normalizeBaseUrl(baseUrlProvider()))
+            .client(client)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(CloudAdminApiService::class.java)
+    }
+
     fun normalizeBaseUrl(raw: String): String {
         var url = raw.trim()
         if (!url.startsWith("http://") && !url.startsWith("https://")) {

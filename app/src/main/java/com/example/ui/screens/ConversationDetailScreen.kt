@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -78,6 +79,7 @@ fun ConversationDetailScreen(
     onDelete: () -> Unit,
     onResume: () -> Unit = {},
     isResuming: Boolean = false,
+    runtimeUnavailableReason: String? = null,
     onOpenModel: () -> Unit = {},
     onOpenContext: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
@@ -94,6 +96,9 @@ fun ConversationDetailScreen(
     onOpenSkills: () -> Unit = {},
     onOpenSubConversations: () -> Unit = {},
     onOpenFinalResponse: () -> Unit = {},
+    onClearEvents: () -> Unit = {},
+    onCheckInit: () -> Unit = {},
+    onUnknownCommand: (String) -> Unit = {},
     onConfirm: (Boolean) -> Unit = {},
     onFork: () -> Unit = {},
     gitChanges: List<GitChange> = emptyList(),
@@ -138,6 +143,8 @@ fun ConversationDetailScreen(
             "/subconv" to "Sub-conversations",
             "/accept" to "Accept a pending confirmation",
             "/reject" to "Reject a pending confirmation",
+            "/clear" to "Clear sandbox bash events",
+            "/init" to "Show agent server init state",
         )
     }
     val showSlashPalette = followUpText.startsWith("/") && !followUpText.contains(" ")
@@ -165,7 +172,9 @@ fun ConversationDetailScreen(
             trimmed.equals("/subconv", true) -> onOpenSubConversations()
             trimmed.equals("/accept", true) -> onConfirm(true)
             trimmed.equals("/reject", true) -> onConfirm(false)
-            trimmed.startsWith("/") -> { /* unknown command: handled by caller feedback */ }
+            trimmed.equals("/clear", true) -> onClearEvents()
+            trimmed.equals("/init", true) -> onCheckInit()
+            trimmed.startsWith("/") -> onUnknownCommand(trimmed)
             else -> onSendMessage(trimmed)
         }
         followUpText = ""
@@ -321,7 +330,60 @@ fun ConversationDetailScreen(
             }
         }
 
-        if (conversation?.status == ConversationStatus.PAUSED) {
+        if (runtimeUnavailableReason != null) {
+            Surface(
+                color = StatusPausedColor.copy(alpha = 0.12f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("runtime_unavailable_banner")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = StatusPausedColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = runtimeUnavailableReason,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    val canResume = conversation?.sandboxStatus?.let {
+                        it.equals("PAUSED", true) || it.equals("MISSING", true)
+                    } == true
+                    if (canResume) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = onResume,
+                            enabled = !isResuming,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                            modifier = Modifier.testTag("runtime_resume_button")
+                        ) {
+                            if (isResuming) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            } else {
+                                Text("Resume", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Shown only when the runtime banner above is not already covering the
+        // paused case, so the user never sees two Resume buttons.
+        if (runtimeUnavailableReason == null && conversation?.status == ConversationStatus.PAUSED) {
             Surface(
                 color = StatusPausedColor.copy(alpha = 0.12f),
                 modifier = Modifier
@@ -396,7 +458,16 @@ fun ConversationDetailScreen(
                     Triple("Fork", "fork", onFork),
                     Triple("Sub-conv", "subconv", onOpenSubConversations),
                 )
+                // Fork and sub-conversations are cloud operations; the rest need a
+                // live sandbox, so they are disabled while the runtime is blocked.
+                val runtimeTools = setOf(
+                    "model", "context", "terminal", "files", "git", "run",
+                    "pause", "stop", "advanced", "goal", "tools", "vscode",
+                    "skills", "final",
+                )
+                val runtimeBlocked = runtimeUnavailableReason != null
                 items(tools) { (label, tag, action) ->
+                    val enabled = !(runtimeBlocked && tag in runtimeTools)
                     Surface(
                         color = when (label) {
                             "Stop" -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
@@ -405,16 +476,17 @@ fun ConversationDetailScreen(
                         },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
-                            .clickable(onClick = action)
+                            .clickable(enabled = enabled, onClick = action)
                             .testTag("tool_$tag")
                     ) {
                         Text(
                             text = label,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
-                            color = when (label) {
-                                "Stop" -> MaterialTheme.colorScheme.error
-                                "Run" -> OpenHandsPrimaryDark
+                            color = when {
+                                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                label == "Stop" -> MaterialTheme.colorScheme.error
+                                label == "Run" -> OpenHandsPrimaryDark
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)

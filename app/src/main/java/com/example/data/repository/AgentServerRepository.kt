@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.api.ApiClient
+import com.example.data.api.RawHttpClient
 import com.example.data.api.AgentServerApiService
 import com.example.data.local.ConversationDao
 import com.example.data.model.InstallCanvasExtensionRequest
@@ -122,6 +123,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.squareup.moshi.Types
 import retrofit2.Response
 
 /**
@@ -134,7 +136,7 @@ import retrofit2.Response
 class AgentServerRepository(
     private val conversationDao: ConversationDao,
 ) {
-    private class RuntimeTarget(val baseUrl: String, val service: AgentServerApiService)
+    private class RuntimeTarget(val baseUrl: String, val sessionKey: String, val service: AgentServerApiService)
 
     private suspend fun target(conversationId: String): Result<RuntimeTarget> {
         val entity = conversationDao.getConversationDirect(conversationId)
@@ -143,7 +145,7 @@ class AgentServerRepository(
             ?: return Result.failure(Exception("This conversation has no runtime URL yet"))
         val key = entity.sessionApiKey?.takeIf { it.isNotBlank() }
             ?: return Result.failure(Exception("Missing sandbox session key — refresh the conversation"))
-        return Result.success(RuntimeTarget(url, ApiClient.agentServerFor(url, key)))
+        return Result.success(RuntimeTarget(url, key, ApiClient.agentServerFor(url, key)))
     }
 
     private fun endpoint(baseUrl: String, path: String): String {
@@ -341,10 +343,10 @@ class AgentServerRepository(
             }
         }
 
-    suspend fun gitDiff(conversationId: String, path: String?): Result<GitDiffDto> =
+    suspend fun gitDiff(conversationId: String, path: String? = null, commit: String? = null): Result<GitDiffDto> =
         withContext(Dispatchers.IO) {
             val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
-            call { t.service.getGitDiff(endpoint(t.baseUrl, "/api/git/diff"), path = path) }
+            call { t.service.getGitDiff(endpoint(t.baseUrl, "/api/git/diff"), path = path, commit = commit) }
         }
 
     suspend fun gitCommits(conversationId: String, path: String? = null): Result<GitCommitsPageDto> =
@@ -469,6 +471,43 @@ class AgentServerRepository(
         withContext(Dispatchers.IO) {
             val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
             call { t.service.clearBashEvents(endpoint(t.baseUrl, "/api/bash/bash_events")) }.map { Unit }
+        }
+
+    /**
+     * Batch-fetch several bash events by id via `GET /api/bash/bash_events/`,
+     * which (per the agent-server spec) carries a JSON array of ids in the
+     * request body. No mainstream client will emit a GET with a body (OkHttp
+     * refuses it; `HttpURLConnection` rewrites the method to POST), so the
+     * request is written on a raw socket via [RawHttpClient].
+     */
+    suspend fun batchBashEvents(conversationId: String, eventIds: List<String>): Result<List<BashEventDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            val payload = ApiClient.moshi.adapter<List<String>>(
+                Types.newParameterizedType(List::class.java, String::class.java)
+            ).toJson(eventIds)
+            try {
+                val response = RawHttpClient.request(
+                    url = endpoint(t.baseUrl, "/api/bash/bash_events/"),
+                    method = "GET",
+                    headers = mapOf(
+                        "X-Session-API-Key" to t.sessionKey,
+                        "Accept" to "application/json",
+                        "Content-Type" to "application/json",
+                    ),
+                    body = payload.toByteArray(Charsets.UTF_8),
+                )
+                if (response.code !in 200..299) {
+                    return@withContext Result.failure(
+                        Exception("Sandbox rejected the request (HTTP ${response.code}).")
+                    )
+                }
+                val type = Types.newParameterizedType(List::class.java, BashEventDto::class.java)
+                val adapter = ApiClient.moshi.adapter<List<BashEventDto>>(type)
+                Result.success(adapter.fromJson(response.body).orEmpty())
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
 
     suspend fun startBash(conversationId: String, command: String): Result<BashCommandDto> =

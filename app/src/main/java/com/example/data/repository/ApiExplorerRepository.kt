@@ -36,6 +36,7 @@ class ApiExplorerRepository {
         .build()
 
     val cloudPaths: List<String> get() = EndpointCatalog.CLOUD_V1.sorted()
+    val cloudAdminPaths: List<String> get() = EndpointCatalog.CLOUD_EXTRA.sorted()
     val agentPaths: List<String> get() = EndpointCatalog.AGENT_SERVER.sorted()
 
     /**

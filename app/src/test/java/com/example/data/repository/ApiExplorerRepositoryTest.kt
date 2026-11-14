@@ -111,8 +111,9 @@ class ApiExplorerRepositoryTest {
     }
 
     @Test
-    fun `the catalog exposes every path on both surfaces`() {
+    fun `the catalog exposes every path on every surface`() {
         assertEquals(67, repository.cloudPaths.size)
+        assertEquals(190, repository.cloudAdminPaths.size)
         assertEquals(151, repository.agentPaths.size)
     }
 }

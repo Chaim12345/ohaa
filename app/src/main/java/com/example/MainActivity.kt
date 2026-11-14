@@ -2,8 +2,10 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AdvancedRuntimeSheet
@@ -79,6 +82,21 @@ fun OpenHandsApp(
   val events by viewModel.events.collectAsState()
   val gitChanges by viewModel.gitChanges.collectAsState()
   val snackbarHostState = remember { SnackbarHostState() }
+
+  // Android 13+ requires an explicit grant before the keep-alive foreground
+  // service can post its ongoing notification.
+  val context = LocalContext.current
+  val notificationPermission = rememberLauncherForActivityResult(
+      ActivityResultContracts.RequestPermission()
+  ) { /* The service still runs; only the notification is affected. */ }
+  LaunchedEffect(Unit) {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+          context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+          android.content.pm.PackageManager.PERMISSION_GRANTED
+      ) {
+          notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+      }
+  }
 
   LaunchedEffect(uiState.notificationMessage) {
     uiState.notificationMessage?.let { msg ->
@@ -158,9 +176,11 @@ fun OpenHandsApp(
             },
             onResume = { viewModel.resumeSelectedSandbox() },
             isResuming = uiState.isResuming,
+            runtimeUnavailableReason = viewModel.runtimeUnavailableReason(),
             onOpenModel = {
               viewModel.loadProfiles()
               viewModel.loadAgentProfiles()
+              viewModel.loadCloudAgentProfiles()
               if (selectedConv?.isAcp != true) viewModel.loadModels()
               viewModel.loadConversationInfo()
               openSheet = "model"
@@ -183,12 +203,15 @@ fun OpenHandsApp(
             },
             onOpenAdvanced = {
               viewModel.loadRuntimeInfo()
+              viewModel.loadRuntimeProviders()
+              viewModel.loadRuntimeModels()
               openSheet = "advanced"
             },
             onOpenGoal = { openSheet = "goal" },
             onOpenTools = {
               viewModel.loadToolCatalog()
               viewModel.loadBashEvents()
+              viewModel.loadSubAgents()
               openSheet = "tools"
             },
             onOpenVSCode = {
@@ -198,6 +221,7 @@ fun OpenHandsApp(
             onOpenSkills = {
               viewModel.loadRuntimeSkills()
               viewModel.loadRuntimePlugins()
+              viewModel.loadCloudSkillCatalog()
               openSheet = "skills"
             },
             onOpenFinalResponse = {
@@ -209,7 +233,10 @@ fun OpenHandsApp(
               openSheet = "subconv"
             },
             onConfirm = { accept -> viewModel.respondToConfirmation(accept) },
-            onFork = { viewModel.forkConversation() }
+            onFork = { viewModel.forkConversation() },
+            onClearEvents = { viewModel.clearRuntimeEvents() },
+            onCheckInit = { viewModel.checkInitStatus() },
+            onUnknownCommand = { cmd -> viewModel.showMessage("Unknown command: $cmd") }
         )
 
         when (openSheet) {
@@ -222,11 +249,17 @@ fun OpenHandsApp(
               efforts = uiState.availableEfforts,
               currentEffort = uiState.conversationInfo?.currentEffort,
               agentProfiles = uiState.agentProfiles,
+              cloudAgentProfiles = uiState.agentProfileCatalog,
+              activeCloudAgentProfileId = uiState.activeAgentProfileId,
+              cloudProfileDetail = uiState.selectedAgentProfileDetail,
+              acpSupportsRuntimeModelSwitch = selectedConv?.acpSupportsRuntimeModelSwitch ?: true,
               isBusy = uiState.isRuntimeBusy,
               onSwitchProfile = { viewModel.switchProfile(it) },
               onSwitchModel = { viewModel.switchModel(it) },
               onSwitchEffort = { viewModel.switchEffort(it) },
               onActivateAgentProfile = { viewModel.activateAgentProfile(it) },
+              onActivateCloudAgentProfile = { viewModel.activateCloudAgentProfile(it) },
+              onPreviewCloudAgentProfile = { viewModel.loadAgentProfileDetail(it) },
               onSearchModels = { viewModel.loadModels(it) },
               onDismiss = { openSheet = null }
           )
@@ -242,18 +275,24 @@ fun OpenHandsApp(
               isBusy = uiState.isRuntimeBusy,
               onCommandChange = { viewModel.updateTerminalCommand(it) },
               onRun = { viewModel.runTerminalCommand() },
+              onRunAsync = { cmd ->
+                uiState.selectedConversationId?.let { viewModel.callRuntimeBash(it, cmd) }
+              },
               onDismiss = { openSheet = null }
           )
           "files" -> FilesSheet(
               path = uiState.filesPath,
               entries = uiState.runtimeFiles,
               onOpen = { viewModel.loadFiles(it) },
+              onDownload = { path -> viewModel.downloadSandboxFileToDownloads(path) },
               onDismiss = { openSheet = null }
           )
           "git" -> GitSheet(
               commits = uiState.gitCommits,
               diff = uiState.gitDiff,
               onLoadCommits = { viewModel.loadGitCommits() },
+              onLoadWorkingDiff = { viewModel.loadGitDiff() },
+              onSelectCommit = { sha -> viewModel.loadGitDiff(commit = sha) },
               onDismiss = { openSheet = null }
           )
           "advanced" -> AdvancedRuntimeSheet(
@@ -263,6 +302,10 @@ fun OpenHandsApp(
               onSetSecurityAnalyzer = { viewModel.setSecurityAnalyzer(it) },
               onReprovision = { viewModel.reprovisionRuntime() },
               onLoadRuntimeInfo = { viewModel.loadRuntimeInfo() },
+              runtimeProviders = uiState.runtimeProviders,
+              runtimeModels = uiState.runtimeModels,
+              onLoadRuntimeProviders = { viewModel.loadRuntimeProviders() },
+              onLoadRuntimeModels = { viewModel.loadRuntimeModels() },
               onDismiss = { openSheet = null }
           )
           "goal" -> GoalSheet(
@@ -277,6 +320,8 @@ fun OpenHandsApp(
               bashEvents = uiState.bashEvents,
               onLoadTools = { viewModel.loadToolCatalog() },
               onLoadBashEvents = { viewModel.loadBashEvents() },
+              subAgents = uiState.subAgents,
+              onLoadSubAgents = { viewModel.loadSubAgents() },
               onDismiss = { openSheet = null }
           )
           "vscode" -> VSCodeSheet(
@@ -294,6 +339,15 @@ fun OpenHandsApp(
               },
               onSync = { viewModel.syncRuntimeSkills() },
               onInstallSkill = { viewModel.installRuntimeSkill(it) },
+              cloudSkills = uiState.cloudSkillCatalog,
+              marketplaceSkills = uiState.marketplaceSkills,
+              marketplacePlugins = uiState.marketplacePlugins,
+              mcpOAuthUrl = uiState.mcpOAuthUrl,
+              mcpOAuthStatus = uiState.mcpOAuthStatus,
+              onLoadCloudCatalog = { viewModel.loadCloudSkillCatalog() },
+              onPreviewMarketplace = { name, source -> viewModel.previewMarketplace(name, source) },
+              onStartMcpOAuth = { viewModel.startMcpOAuth(it) },
+              onCheckMcpOAuth = { viewModel.pollMcpOAuthStatus() },
               onDismiss = { openSheet = null }
           )
           "final" -> FinalResponseSheet(
@@ -396,18 +450,26 @@ fun OpenHandsApp(
                 onDeleteProfile = { viewModel.deleteProfile(it) },
                 onActivateProfile = { viewModel.activateCloudProfile(it) },
                 onSaveProfile = { name, model, base -> viewModel.saveProfile(name, model, base) },
-                onLoadProfiles = { viewModel.loadProfiles() }
+                onLoadProfiles = { viewModel.loadProfiles() },
+                selectedProfileDetail = uiState.selectedProfileDetail,
+                onPreviewProfile = { viewModel.loadProfileDetail(it) },
+                onRenameProfile = { name, newName -> viewModel.renameCloudProfile(name, newName) },
+                onInstallPlugin = { viewModel.installRuntimePlugin(it) }
             )
           }
           AppNavTab.EXPLORER -> {
             ApiExplorerScreen(
                 cloudPaths = viewModel.explorerCloudPaths,
+                cloudAdminPaths = viewModel.explorerCloudAdminPaths,
                 agentPaths = viewModel.explorerAgentPaths,
                 response = uiState.explorerResponse,
                 isLoading = uiState.explorerLoading,
                 onCall = { surface, method, path, body ->
                   viewModel.callExplorer(surface, method, path, body)
-                }
+                },
+                agentSchema = uiState.agentSchema,
+                conversationSchema = uiState.conversationSchema,
+                onLoadSchemas = { viewModel.loadSchemas() }
             )
           }
           AppNavTab.SETTINGS -> {

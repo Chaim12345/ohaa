@@ -80,6 +80,31 @@ class AgentServerRepositoryTest {
     }
 
     @Test
+    fun `batch bash events issues a real GET with a JSON id body`() = runBlocking {
+        seed()
+        val raw = com.example.data.api.RawHttpServer(200, "application/json",
+            """[{"id":"e1","command":"ls","stdout":"a","stderr":"","exit_code":0}]""")
+        database.conversationDao().insertConversation(
+            ConversationEntity(
+                id = "conv-2", title = "t", status = "RUNNING", selectedRepository = "org/repo",
+                createdAt = 1L, updatedAt = 1L, sandboxId = "sbx", sandboxStatus = "RUNNING",
+                conversationUrl = raw.baseUrl(), sessionApiKey = "session-secret",
+            )
+        )
+
+        val result = repository.batchBashEvents("conv-2", listOf("e1"))
+
+        assertTrue(result.isSuccess)
+        assertEquals("e1", result.getOrNull()?.firstOrNull()?.id)
+        val req = raw.awaitRequest()
+        assertEquals("GET", req.method)
+        assertEquals("/api/bash/bash_events/", req.path)
+        assertEquals("session-secret", req.headers["x-session-api-key"])
+        assertEquals("""["e1"]""", req.body)
+        raw.stop()
+    }
+
+    @Test
     fun `condense hits the condense endpoint`() = runBlocking {
         seed()
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"success":true}"""))

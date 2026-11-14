@@ -12,6 +12,7 @@ import com.example.data.local.SavedTemplateEntity
 import com.example.data.model.AcpModelInfoDto
 import com.example.data.model.AcpAgentProfileDto
 import com.example.data.model.AgentProfileInfoDto
+import com.example.data.model.AgentProfileListDto
 import com.example.data.model.GitOrganizationsDto
 import com.example.data.model.GitProviderTokenRequest
 import com.example.data.model.InstalledSkillDto
@@ -114,6 +115,9 @@ class OpenHandsRepository(
 
     private var apiService: OpenHandsApiService = createApiService()
 
+    /** Typed client for the non-`/api/v1` Cloud surface (admin, keys, billing, …). */
+    var cloudOps: CloudOpsRepository = createCloudOps()
+
     private fun createApiService(): OpenHandsApiService {
         return ApiClient.create(
             baseUrlProvider = { baseUrl },
@@ -121,10 +125,20 @@ class OpenHandsRepository(
         )
     }
 
+    private fun createCloudOps(): CloudOpsRepository {
+        return CloudOpsRepository(
+            ApiClient.createCloudAdmin(
+                baseUrlProvider = { baseUrl },
+                apiKeyProvider = { apiKey }
+            )
+        )
+    }
+
     fun updateConfig(newKey: String, newUrl: String) {
         apiKey = newKey
         baseUrl = if (newUrl.isNotBlank()) newUrl else DEFAULT_BASE_URL
         apiService = createApiService()
+        cloudOps = createCloudOps()
     }
 
     // Reactive streams from Room
@@ -511,10 +525,19 @@ class OpenHandsRepository(
      * Gemini CLI, Kimi, OpenCode, or any custom ACP server.
      */
     suspend fun listAgentProfiles(): Result<List<AgentProfileInfoDto>> = withContext(Dispatchers.IO) {
+        listAgentProfilesDetailed().map { it.profiles.orEmpty() }
+    }
+
+    /**
+     * The full agent-profile listing, including `active_agent_profile_id`, which
+     * the plain list form drops. The settings screen uses it to highlight the
+     * account's active profile.
+     */
+    suspend fun listAgentProfilesDetailed(): Result<AgentProfileListDto> = withContext(Dispatchers.IO) {
         try {
             val response = apiService.listAgentProfiles()
             if (response.isSuccessful) {
-                Result.success(response.body()?.profiles.orEmpty())
+                Result.success(response.body() ?: AgentProfileListDto())
             } else {
                 Result.failure(Exception(authAwareMessage(response)))
             }

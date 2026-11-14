@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.AcpAgentProfileDto
 import com.example.data.model.AcpEffortOptionDto
 import com.example.data.model.AcpModelInfoDto
 import com.example.data.model.AgentProfileInfoDto
@@ -149,17 +150,51 @@ fun ModelSheet(
     efforts: List<AcpEffortOptionDto>,
     currentEffort: String?,
     agentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    cloudAgentProfiles: List<AgentProfileInfoDto> = emptyList(),
+    activeCloudAgentProfileId: String? = null,
+    cloudProfileDetail: AcpAgentProfileDto? = null,
+    acpSupportsRuntimeModelSwitch: Boolean = true,
     isBusy: Boolean,
     onSwitchProfile: (String) -> Unit,
     onSwitchModel: (String) -> Unit,
     onSwitchEffort: (String) -> Unit,
     onActivateAgentProfile: (String) -> Unit = {},
+    onActivateCloudAgentProfile: (String) -> Unit = {},
+    onPreviewCloudAgentProfile: (String) -> Unit = {},
     onSearchModels: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     SheetScaffold(title = "Model & effort", onDismiss = onDismiss) {
         LazyColumn {
+            if (cloudAgentProfiles.isNotEmpty()) {
+                item { SectionLabel("Cloud agent profiles (ACP)") }
+                items(cloudAgentProfiles) { p ->
+                    SelectableRow(
+                        label = p.name ?: "(unnamed)",
+                        sub = listOfNotNull(p.agentKind, p.acpServer, p.acpModel).joinToString(" · "),
+                        selected = p.id != null && p.id == activeCloudAgentProfileId,
+                        testTag = "cloud_agent_profile_${p.id}"
+                    ) {
+                        p.id?.let(onActivateCloudAgentProfile)
+                        p.name?.let(onPreviewCloudAgentProfile)
+                    }
+                }
+                cloudProfileDetail?.let { d ->
+                    item {
+                        SelectionContainer {
+                            Text(
+                                text = "Preview: ${listOfNotNull(d.agentKind, d.acpServer, d.acpModel, d.acpEffort).joinToString(" · ")}",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             if (agentProfiles.isNotEmpty()) {
                 item { SectionLabel("Agent profiles (ACP)") }
                 items(agentProfiles) { p ->
@@ -185,11 +220,22 @@ fun ModelSheet(
 
             if (isAcp && acpModels.isNotEmpty()) {
                 item { SectionLabel("ACP models") }
+                if (!acpSupportsRuntimeModelSwitch) {
+                    item {
+                        Text(
+                            text = "This ACP agent does not support switching the model at runtime.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
                 items(acpModels) { m ->
                     SelectableRow(
                         label = m.name ?: m.modelId ?: "?",
                         sub = m.modelId,
                         selected = m.modelId == currentModel,
+                        enabled = acpSupportsRuntimeModelSwitch,
                         testTag = "acp_model_${m.modelId}"
                     ) { onSwitchModel(m.modelId ?: return@SelectableRow) }
                 }
@@ -197,6 +243,16 @@ fun ModelSheet(
 
             if (efforts.isNotEmpty()) {
                 item { SectionLabel("Reasoning effort") }
+                if (!acpSupportsRuntimeModelSwitch) {
+                    item {
+                        Text(
+                            text = "Effort switching is unavailable for this ACP agent.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(efforts) { e ->
@@ -205,13 +261,16 @@ fun ModelSheet(
                                 color = if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
-                                    .clickable { e.value?.let(onSwitchEffort) }
+                                    .clickable(enabled = acpSupportsRuntimeModelSwitch) { e.value?.let(onSwitchEffort) }
                                     .testTag("effort_${e.value}")
                             ) {
                                 Text(
                                     text = e.name ?: e.value ?: "?",
                                     fontSize = 12.sp,
-                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (selected) Color.White
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                        alpha = if (acpSupportsRuntimeModelSwitch) 1f else 0.5f
+                                    ),
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
@@ -321,6 +380,7 @@ fun TerminalSheet(
     isBusy: Boolean,
     onCommandChange: (String) -> Unit,
     onRun: () -> Unit,
+    onRunAsync: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     SheetScaffold(title = "Terminal", onDismiss = onDismiss) {
@@ -335,19 +395,28 @@ fun TerminalSheet(
                     .testTag("terminal_input")
             )
             Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = onRun,
-                enabled = command.isNotBlank() && !isBusy,
-                colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("terminal_run_button")
-            ) {
-                if (isBusy) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                } else {
-                    Text("Run", color = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = onRun,
+                    enabled = command.isNotBlank() && !isBusy,
+                    colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("terminal_run_button")
+                ) {
+                    if (isBusy) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text("Run", color = Color.White)
+                    }
                 }
+                OutlinedButton(
+                    onClick = { if (command.isNotBlank()) onRunAsync(command) },
+                    enabled = command.isNotBlank() && !isBusy,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("terminal_run_async_button")
+                ) { Text("Run in background") }
             }
             Spacer(Modifier.height(10.dp))
             Surface(
@@ -375,6 +444,7 @@ fun FilesSheet(
     path: String?,
     entries: List<FileEntryDto>,
     onOpen: (String?) -> Unit,
+    onDownload: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     SheetScaffold(title = "Files", onDismiss = onDismiss) {
@@ -408,6 +478,7 @@ fun FilesSheet(
                     testTag = "file_${entry.path}"
                 ) {
                     if (entry.isDirectory) onOpen(entry.path)
+                    else entry.path?.let(onDownload)
                 }
             }
             if (entries.isEmpty()) {
@@ -430,16 +501,26 @@ fun GitSheet(
     commits: List<GitCommitDto>,
     diff: GitDiffDto?,
     onLoadCommits: () -> Unit,
+    onLoadWorkingDiff: () -> Unit = {},
+    onSelectCommit: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     SheetScaffold(title = "Git", onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth()) {
-            OutlinedButton(
-                onClick = onLoadCommits,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("git_load_commits_button")
-            ) { Text("Load recent commits") }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(
+                    onClick = onLoadCommits,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("git_load_commits_button")
+                ) { Text("Recent commits") }
+                OutlinedButton(
+                    onClick = onLoadWorkingDiff,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("git_load_working_diff_button")
+                ) { Text("Working tree") }
+            }
 
             if (commits.isNotEmpty()) {
                 SectionLabel("Commits")
@@ -449,7 +530,7 @@ fun GitSheet(
                             label = c.subject ?: "(no subject)",
                             sub = "${c.shortSha ?: ""} · ${c.author ?: ""}",
                             testTag = "commit_${c.sha}"
-                        ) {}
+                        ) { c.sha?.let(onSelectCommit) }
                     }
                 }
             }

@@ -102,6 +102,10 @@ data class OpenHandsUiState(
     val agentProfiles: List<AgentProfileInfoDto> = emptyList(),
     /** Cloud agent-profile catalog (OpenHands + ACP) for the New Task picker. */
     val agentProfileCatalog: List<AgentProfileInfoDto> = emptyList(),
+    /** The account's active cloud agent profile id, if one is set. */
+    val activeAgentProfileId: String? = null,
+    /** Body of the cloud agent profile last previewed (`GET /api/agent-profiles/{name}`). */
+    val selectedAgentProfileDetail: AcpAgentProfileDto? = null,
     // ---- new-task options ----
     val agentTypeSelection: String = "default",
     val llmProfileSelection: String? = null,
@@ -146,6 +150,7 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     private val explorerRepository = com.example.data.repository.ApiExplorerRepository()
 
     val explorerCloudPaths: List<String> get() = explorerRepository.cloudPaths
+    val explorerCloudAdminPaths: List<String> get() = explorerRepository.cloudAdminPaths
     val explorerAgentPaths: List<String> get() = explorerRepository.agentPaths
 
     private val _uiState = MutableStateFlow(
@@ -554,6 +559,9 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = _uiState.value.copy(notificationMessage = null)
     }
 
+    /** Surfaces a transient message to the user (e.g. an unknown slash command). */
+    fun showMessage(message: String) = notify(message)
+
     fun clearLocalCache() {
         viewModelScope.launch {
             repository.clearCache()
@@ -673,6 +681,36 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** Clears the sandbox's bash-event log and the locally cached events. */
+    fun clearRuntimeEvents() {
+        val c = selectedConversation() ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRuntimeBusy = true)
+            val result = runtimeRepository.clearBashEvents(c.id)
+            _uiState.value = _uiState.value.copy(isRuntimeBusy = false)
+            if (result.isSuccess) {
+                _events.value = emptyList()
+                notify("Sandbox bash events cleared")
+            } else {
+                notify(result.exceptionOrNull()?.message)
+            }
+        }
+    }
+
+    /** Reports the agent server's init state for the open conversation. */
+    fun checkInitStatus() {
+        val c = selectedConversation() ?: return
+        viewModelScope.launch {
+            val result = runtimeRepository.initStatus(c.id)
+            notify(
+                result.fold(
+                    onSuccess = { "Agent server init state: ${it.state ?: "unknown"}" },
+                    onFailure = { it.message }
+                )
+            )
+        }
+    }
+
     fun runAgent() {
         val c = selectedConversation() ?: return
         viewModelScope.launch {
@@ -742,10 +780,10 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ---- git ---------------------------------------------------------------
 
-    fun loadGitDiff(path: String?) {
+    fun loadGitDiff(path: String? = null, commit: String? = null) {
         val c = selectedConversation() ?: return
         viewModelScope.launch {
-            val result = runtimeRepository.gitDiff(c.id, path)
+            val result = runtimeRepository.gitDiff(c.id, path, commit)
             _uiState.value = _uiState.value.copy(gitDiff = result.getOrNull())
             if (result.isFailure) notify(result.exceptionOrNull()?.message)
         }
@@ -865,8 +903,11 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     /** Loads the cloud agent-profile catalog (OpenHands + ACP) for New Task. */
     fun loadCloudAgentProfiles() {
         viewModelScope.launch {
-            repository.listAgentProfiles().getOrNull()?.let {
-                _uiState.value = _uiState.value.copy(agentProfileCatalog = it)
+            repository.listAgentProfilesDetailed().getOrNull()?.let { dto ->
+                _uiState.value = _uiState.value.copy(
+                    agentProfileCatalog = dto.profiles.orEmpty(),
+                    activeAgentProfileId = dto.activeAgentProfileId,
+                )
             }
         }
     }
@@ -874,7 +915,10 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
     /** Reads one agent profile body (ACP server/model/effort) for preview. */
     fun loadAgentProfileDetail(name: String, onLoaded: (AcpAgentProfileDto) -> Unit = {}) {
         viewModelScope.launch {
-            repository.getAgentProfile(name).getOrNull()?.let(onLoaded)
+            repository.getAgentProfile(name).getOrNull()?.let { detail ->
+                _uiState.value = _uiState.value.copy(selectedAgentProfileDetail = detail)
+                onLoaded(detail)
+            }
         }
     }
 
@@ -1322,6 +1366,21 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                 else result.exceptionOrNull()?.message
             )
         }
+    }
+
+    /**
+     * Saves a sandbox file into the app's external files dir, where the user can
+     * reach it from a file manager. Used by the file browser, which has no
+     * document picker in a Compose sheet.
+     */
+    fun downloadSandboxFileToDownloads(path: String) {
+        val name = path.trimEnd('/').substringAfterLast('/').ifBlank { "sandbox_file" }
+        val dir = getApplication<Application>().getExternalFilesDir(null)
+        if (dir == null) {
+            notify("No external storage available")
+            return
+        }
+        downloadSandboxFile(path, java.io.File(dir, name))
     }
 
     fun loadSubAgents() {

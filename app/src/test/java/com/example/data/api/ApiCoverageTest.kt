@@ -12,9 +12,10 @@ import java.io.File
  *    equal the paths in the bundled OpenAPI specs, both directions. A path added
  *    to the spec but not the catalog (or vice versa) fails.
  *
- * 2. **Explicit scope** — every *other* path in the cloud spec must appear in
- *    [EndpointCatalog.OUT_OF_SCOPE_CLOUD]. The out-of-scope list is therefore
- *    exhaustive: a new server path cannot silently fall outside the app's scope.
+ * 2. **Explicit scope** — the non-v1 cloud surface is fully implemented, so every
+ *    such path must appear in [EndpointCatalog.CLOUD_EXTRA] and
+ *    [EndpointCatalog.OUT_OF_SCOPE_CLOUD] must be empty. Nothing can silently
+ *    fall outside the app's scope.
  *
  * 3. **Real wiring** — every catalog path must appear as a genuine request-URL
  *    call site in production source. This scan deliberately EXCLUDES
@@ -97,6 +98,89 @@ class ApiCoverageTest {
     // ---- 2. explicit scope -------------------------------------------------
 
     @Test
+    fun `every non-v1 cloud operation has a typed binding`() {
+        // Path parity is not enough: a path can carry several methods. This parses
+        // the spec and asserts each (method, path) operation has a matching
+        // Retrofit annotation in the generated CloudAdminApiService.
+        val text = File("app/src/main/java/com/example/data/api/CloudAdminApiService.kt")
+            .takeIf { it.exists() }
+            ?: File("src/main/java/com/example/data/api/CloudAdminApiService.kt")
+        assertTrue("CloudAdminApiService.kt not found", text.exists())
+        val bindings = linkedSetOf<String>()
+        Regex("@(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\(\\s*\"([^\"]*)\"").findAll(text.readText())
+            .forEach { bindings.add(it.groupValues[1] + " " + normalize(it.groupValues[2])) }
+
+        val ops = cloudSpecOperations()
+        assertTrue("expected ~242 non-v1 cloud operations, parsed ${ops.size}", ops.size > 200)
+        val missing = mutableListOf<String>()
+        ops.forEach { (method, path) ->
+            if (!path.startsWith("/api/v1") && "$method ${normalize(path)}" !in bindings) {
+                missing.add("$method $path")
+            }
+        }
+        assertEquals("Non-v1 cloud operations with no typed binding: $missing", emptyList<String>(), missing)
+    }
+
+    private fun cloudSpecOperations(): List<Pair<String, String>> {
+        // org.json is a stub in unit tests, so scan the JSON text directly. The
+        // `paths` object has one key per path (depth 1) whose value is an object
+        // of HTTP methods (depth 2). Track the depth-1 key while reading it.
+        val text = javaClass.classLoader!!.getResourceAsStream("openapi/cloud.json")!!
+            .bufferedReader().use { it.readText() }
+        val match = Regex("\"paths\"\\s*:\\s*\\{").find(text)
+        assertTrue("spec has no paths object", match != null)
+        val brace = match!!.range.last
+        val methods = setOf("get", "post", "put", "patch", "delete", "head", "options")
+        val out = mutableListOf<Pair<String, String>>()
+
+        var depth = 0
+        var i = brace
+        var inString = false
+        var escaped = false
+        val sb = StringBuilder()
+        var currentPath: String? = null
+        var expectingKey = true
+
+        while (i < text.length) {
+            val c = text[i]
+            if (inString) {
+                if (escaped) escaped = false
+                else if (c == '\\') escaped = true
+                else if (c == '"') {
+                    inString = false
+                    val value = sb.toString()
+                    sb.setLength(0)
+                    if (expectingKey) {
+                        if (depth == 1 && value.startsWith("/")) {
+                            currentPath = value
+                        } else if (depth == 2 && value.lowercase() in methods && currentPath != null) {
+                            out.add(value.uppercase() to currentPath!!)
+                        }
+                    }
+                    expectingKey = false
+                } else sb.append(c)
+            } else {
+                when (c) {
+                    '"' -> inString = true
+                    '{', '[' -> {
+                        depth++
+                        expectingKey = true
+                    }
+                    '}', ']' -> {
+                        depth--
+                        if (depth == 0) break
+                        expectingKey = false
+                    }
+                    ':' -> expectingKey = false
+                    ',' -> expectingKey = true
+                }
+            }
+            i++
+        }
+        return out
+    }
+
+    @Test
     fun `every non-v1 cloud spec path is explicitly scoped out`() {
         val others = cloudSpec().filter { !it.startsWith("/api/v1") }.toSet()
         val unclassified = others - EndpointCatalog.OUT_OF_SCOPE_CLOUD - EndpointCatalog.CLOUD_EXTRA
@@ -115,12 +199,33 @@ class ApiCoverageTest {
 
     @Test
     fun `cloud extra catalog matches the spec exactly`() {
-        // The non-v1 cloud paths we implement (agent profiles) must all be real
-        // spec paths, and vice versa — CLOUD_EXTRA is not a place to invent paths.
+        // The non-v1 cloud surface is fully implemented, so CLOUD_EXTRA must equal
+        // the non-v1 spec paths exactly — no path invented, none left uncovered.
         val others = cloudSpec().filter { !it.startsWith("/api/v1") }.toSet()
         val bogus = EndpointCatalog.CLOUD_EXTRA - others
         assertEquals("CLOUD_EXTRA paths not in the cloud spec: $bogus", emptySet<String>(), bogus)
+        val uncovered = others - EndpointCatalog.CLOUD_EXTRA
+        assertEquals(
+            "Non-v1 cloud spec paths not implemented: $uncovered",
+            emptySet<String>(),
+            uncovered,
+        )
         assertTrue("CLOUD_EXTRA should not be empty", EndpointCatalog.CLOUD_EXTRA.isNotEmpty())
+    }
+
+    @Test
+    fun `no cloud spec path is out of scope`() {
+        // Provable full coverage: the client implements the entire bundled cloud
+        // spec, so the out-of-scope set is empty. This is the assertion that turns
+        // "100% of the documented surface" into "100% of the spec".
+        assertEquals(
+            "OUT_OF_SCOPE_CLOUD must be empty for full coverage: ${EndpointCatalog.OUT_OF_SCOPE_CLOUD}",
+            emptySet<String>(),
+            EndpointCatalog.OUT_OF_SCOPE_CLOUD,
+        )
+        val specTotal = cloudSpec().size
+        val covered = EndpointCatalog.CLOUD_V1.size + EndpointCatalog.CLOUD_EXTRA.size
+        assertEquals("catalog must cover every cloud spec path", specTotal, covered)
     }
 
     // ---- 3. real wiring ----------------------------------------------------
@@ -152,46 +257,11 @@ class ApiCoverageTest {
         val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.CLOUD_EXTRA + EndpointCatalog.AGENT_SERVER
         val unwired = all
             .filter { it !in callSites }
-            .filter { it !in EndpointCatalog.UNWIRED_BY_TRANSPORT }
             .sorted()
         assertEquals(
             "Catalog paths with no real call site in production source: $unwired",
             emptyList<String>(),
             unwired,
-        )
-    }
-
-    @Test
-    fun `declared transport-unwired paths are real and still unwired`() {
-        // The declaration must not become a dumping ground: each entry must exist
-        // in the catalog, and must genuinely have no call site (so it cannot be
-        // used to hide a path that is actually wired).
-        val all = EndpointCatalog.CLOUD_V1 + EndpointCatalog.CLOUD_EXTRA + EndpointCatalog.AGENT_SERVER
-        val bogus = EndpointCatalog.UNWIRED_BY_TRANSPORT - all
-        assertEquals("UNWIRED_BY_TRANSPORT entries not in the catalog: $bogus", emptySet<String>(), bogus)
-
-        val root = listOf(File("src/main/java/com/example"), File("app/src/main/java/com/example"))
-            .firstOrNull { it.isDirectory }
-        assertTrue("could not locate production sources", root != null)
-        val callSites = linkedSetOf<String>()
-        root!!.walkTopDown()
-            .filter { it.extension == "kt" && it.name != "EndpointCatalog.kt" }
-            .forEach { file ->
-                val text = stripComments(file.readText())
-                Regex("@(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\(\\s*\"([^\"]*)\"").findAll(text)
-                    .forEach { if (it.groupValues[1].isNotBlank()) callSites.add(normalize(it.groupValues[1])) }
-                Regex("endpoint\\([^,]+,\\s*\"([^\"]+)\"").findAll(text)
-                    .forEach { callSites.add(normalize(it.groupValues[1])) }
-                Regex("\"(/?api/[^\"\\s]*)\"").findAll(text)
-                    .forEach { callSites.add(normalize(it.groupValues[1])) }
-                Regex("\"(/v1/[^\"\\s]*)\"").findAll(text)
-                    .forEach { callSites.add(normalize(it.groupValues[1])) }
-            }
-        val nowWired = EndpointCatalog.UNWIRED_BY_TRANSPORT.filter { it in callSites }
-        assertEquals(
-            "These paths are declared unwired but now have a call site — remove them from UNWIRED_BY_TRANSPORT: $nowWired",
-            emptyList<String>(),
-            nowWired,
         )
     }
 

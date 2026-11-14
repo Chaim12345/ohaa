@@ -34,17 +34,26 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun ApiExplorerScreen(
     cloudPaths: List<String>,
+    cloudAdminPaths: List<String>,
     agentPaths: List<String>,
     response: String?,
     isLoading: Boolean,
     onCall: (surface: String, method: String, path: String, body: String) -> Unit,
+    agentSchema: String? = null,
+    conversationSchema: String? = null,
+    onLoadSchemas: () -> Unit = {},
 ) {
     var surface by remember { mutableStateOf("cloud") }
     var method by remember { mutableStateOf("GET") }
     var path by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var methodMenu by remember { mutableStateOf(false) }
-    val paths = if (surface == "cloud") cloudPaths else agentPaths
+    var showSchemas by remember { mutableStateOf(false) }
+    val paths = when (surface) {
+        "cloud" -> cloudPaths
+        "cloud-admin" -> cloudAdminPaths
+        else -> agentPaths
+    }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("API Explorer", style = MaterialTheme.typography.titleLarge)
@@ -60,6 +69,12 @@ fun ApiExplorerScreen(
                 onClick = { surface = "cloud" },
                 label = { Text("Cloud V1") },
                 modifier = Modifier.testTag("explorer_surface_cloud"),
+            )
+            FilterChip(
+                selected = surface == "cloud-admin",
+                onClick = { surface = "cloud-admin" },
+                label = { Text("Cloud admin") },
+                modifier = Modifier.testTag("explorer_surface_cloud_admin"),
             )
             FilterChip(
                 selected = surface == "agent",
@@ -108,6 +123,35 @@ fun ApiExplorerScreen(
         if (response != null) {
             Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Text(response, fontSize = 11.sp, modifier = Modifier.padding(12.dp).testTag("explorer_response"))
+            }
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Button(
+                onClick = {
+                    showSchemas = !showSchemas
+                    if (showSchemas) onLoadSchemas()
+                },
+                modifier = Modifier.testTag("explorer_schemas_toggle"),
+            ) { Text(if (showSchemas) "Hide schemas" else "Show schemas") }
+        }
+
+        if (showSchemas) {
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(
+                    text = buildString {
+                        appendLine("Agent schema:")
+                        appendLine(agentSchema ?: "(not loaded)")
+                        appendLine()
+                        appendLine("Conversation schema:")
+                        append(conversationSchema ?: "(not loaded)")
+                    },
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(12.dp).testTag("explorer_schemas"),
+                )
             }
         }
 

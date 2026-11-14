@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.ProfileDetailDto
 import com.example.data.model.ProfileInfoDto
 import com.example.data.model.SandboxInfoDto
 import com.example.data.model.SecretDto
@@ -89,7 +90,11 @@ fun ResourcesScreen(
     onActivateProfile: (String) -> Unit = {},
     onSaveProfile: (String, String?, String?) -> Unit = { _, _, _ -> },
     profiles: List<ProfileInfoDto> = emptyList(),
+    selectedProfileDetail: ProfileDetailDto? = null,
     onLoadProfiles: () -> Unit = {},
+    onPreviewProfile: (String) -> Unit = {},
+    onRenameProfile: (String, String) -> Unit = { _, _ -> },
+    onInstallPlugin: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var section by remember { mutableStateOf("Secrets") }
@@ -156,7 +161,7 @@ fun ResourcesScreen(
                 onAdd = { showAddSecret = true },
                 onDelete = onDeleteSecret
             )
-            "Skills" -> SkillsSection(skills = skills)
+            "Skills" -> SkillsSection(skills = skills, onInstallPlugin = onInstallPlugin)
             "Sandboxes" -> SandboxesSection(
                 sandboxes = sandboxes,
                 onDelete = onDeleteSandbox,
@@ -170,9 +175,12 @@ fun ResourcesScreen(
             )
             "Profiles" -> ProfilesSection(
                 profiles = profiles,
+                selectedDetail = selectedProfileDetail,
                 onDelete = onDeleteProfile,
                 onActivate = onActivateProfile,
-                onSave = onSaveProfile
+                onSave = onSaveProfile,
+                onPreview = onPreviewProfile,
+                onRename = onRenameProfile
             )
             "Settings" -> SettingsSection(settings = userSettings, webClient = webClientConfig, onSave = onSaveSettings)
         }
@@ -245,13 +253,17 @@ private fun GitSection(
 @Composable
 private fun ProfilesSection(
     profiles: List<ProfileInfoDto>,
+    selectedDetail: ProfileDetailDto?,
     onDelete: (String) -> Unit,
     onActivate: (String) -> Unit,
     onSave: (String, String?, String?) -> Unit,
+    onPreview: (String) -> Unit,
+    onRename: (String, String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("") }
+    var renameTo by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = name,
@@ -296,6 +308,35 @@ private fun ProfilesSection(
                     )
                 }
             }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text("Profile detail", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = renameTo,
+            onValueChange = { renameTo = it },
+            label = { Text("New name (rename selected profile)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("profile_rename_input")
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(
+                onClick = { if (name.isNotBlank()) onPreview(name) },
+                enabled = name.isNotBlank(),
+                modifier = Modifier.weight(1f).testTag("profile_preview")
+            ) { Text("Preview") }
+            OutlinedButton(
+                onClick = { if (name.isNotBlank() && renameTo.isNotBlank()) onRename(name, renameTo) },
+                enabled = name.isNotBlank() && renameTo.isNotBlank(),
+                modifier = Modifier.weight(1f).testTag("profile_rename")
+            ) { Text("Rename") }
+        }
+        selectedDetail?.let { d ->
+            Text("Name: ${d.name ?: "—"}", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            Text("API key set: ${d.apiKeySet}", fontSize = 12.sp)
+            Text("Model: ${d.config?.model ?: "—"}", fontSize = 12.sp)
+            Text("Base URL: ${d.config?.baseUrl ?: "—"}", fontSize = 12.sp)
         }
     }
 }
@@ -402,7 +443,8 @@ private fun SecretsSection(
 }
 
 @Composable
-private fun SkillsSection(skills: List<SkillInfoDto>) {
+private fun SkillsSection(skills: List<SkillInfoDto>, onInstallPlugin: (String) -> Unit = {}) {
+    var pluginName by remember { mutableStateOf("") }
     if (skills.isEmpty()) {
         EmptyHint("No skills found. Tap refresh.")
     } else {
@@ -412,6 +454,21 @@ private fun SkillsSection(skills: List<SkillInfoDto>) {
             }
         }
     }
+    Spacer(Modifier.height(8.dp))
+    Text("Install runtime plugin", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    OutlinedTextField(
+        value = pluginName,
+        onValueChange = { pluginName = it },
+        label = { Text("Plugin name") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("plugin_install_input")
+    )
+    Spacer(Modifier.height(6.dp))
+    OutlinedButton(
+        onClick = { if (pluginName.isNotBlank()) onInstallPlugin(pluginName) },
+        enabled = pluginName.isNotBlank(),
+        modifier = Modifier.fillMaxWidth().testTag("plugin_install")
+    ) { Text("Install plugin") }
 }
 
 @Composable
