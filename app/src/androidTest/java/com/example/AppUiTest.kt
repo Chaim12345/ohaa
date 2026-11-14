@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
@@ -40,7 +41,7 @@ class AppUiTest {
         for ((navTag, landmark) in destinations) {
             tag(navTag).performClick()
             composeRule.waitForIdle()
-            tag(landmark).assertIsDisplayed()
+            tag(landmark).performScrollTo().assertIsDisplayed()
         }
     }
 
@@ -55,9 +56,10 @@ class AppUiTest {
         tag("nav_settings").performClick()
         composeRule.waitForIdle()
 
-        tag("settings_api_key_input").performTextReplacement("oh-test-key")
-        tag("settings_base_url_input").performTextReplacement("http://127.0.0.1:9")
-        tag("save_config_button").performClick()
+        tag("settings_api_key_input").performScrollTo().performTextReplacement("oh-test-key")
+        tag("settings_base_url_input").performScrollTo()
+            .performTextReplacement("http://127.0.0.1:9")
+        tag("save_config_button").performScrollTo().performClick()
         composeRule.waitForIdle()
 
         assertEquals("oh-test-key", prefs.getString("api_key", null))
@@ -68,13 +70,15 @@ class AppUiTest {
     fun resourcesProfilesExposesAcpAgentProfileEditor() {
         tag("nav_resources").performClick()
         composeRule.waitForIdle()
-        tag("resources_tab_Profiles").performClick()
+        tag("resources_tab_Profiles").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        tag("agent_profile_name_input").assertIsDisplayed()
+        tag("agent_profile_name_input").performScrollTo().assertIsDisplayed()
         tag("agent_profile_name_input").performTextInput("claude-code")
-        tag("agent_profile_server_input").performTextInput("claude-code-acp")
-        tag("agent_profile_model_input").performTextInput("claude-sonnet-4-5")
-        tag("agent_profile_save").assertIsDisplayed()
+        tag("agent_profile_server_input").performScrollTo()
+            .performTextInput("claude-code-acp")
+        tag("agent_profile_model_input").performScrollTo()
+            .performTextInput("claude-sonnet-4-5")
+        tag("agent_profile_save").performScrollTo().assertIsDisplayed()
     }
 }
