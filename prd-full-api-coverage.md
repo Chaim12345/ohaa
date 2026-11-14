@@ -9,28 +9,52 @@
 
 ## 0. Implementation Status (verified 2026-11-14)
 
-Coverage is now **machine-checked**, not estimated. The app ships
+Coverage is **machine-checked** over an **explicit, honest scope**, not estimated
+and not claimed for the whole spec. The app ships
 [`EndpointCatalog`](app/src/main/java/com/example/data/api/EndpointCatalog.kt),
-which lists every path on both surfaces, and
+which lists every path the client implements **and** every cloud path it
+deliberately does not, and
 [`ApiCoverageTest`](app/src/test/java/com/example/data/api/ApiCoverageTest.kt)
 parses the bundled OpenAPI specs (`app/src/test/resources/openapi/cloud.json`
-and `agent.json`, captured from the live deployment) and asserts:
+and `agent.json`, captured from the live deployment) and asserts four things:
 
-1. every spec path appears in the catalog,
-2. the catalog contains nothing the spec does not, and
-3. every catalog path is referenced by a string literal in production source.
+1. every Cloud `/api/v1` spec path is in the catalog (and nothing extra),
+2. every agent-server spec path is in the catalog (and nothing extra),
+3. every *other* cloud spec path is listed in `OUT_OF_SCOPE_CLOUD` with a reason —
+   so a new server path cannot silently fall outside scope, and
+4. every catalog path has a **real call site** in production source: a Retrofit
+   annotation, an `endpoint(base, path)` call, or a path literal passed to a
+   service method. The scan **excludes `EndpointCatalog.kt` itself** and strips
+   comments first, so listing a path does not satisfy it. This is
+   mutation-tested: renaming one real call site fails the test.
 
 | Surface | Coverage | Proof |
 |---|---|---|
-| Cloud `/api/v1` | **67 / 67 paths** | `ApiCoverageTest.cloud v1 catalog matches the spec exactly` |
-| Agent-server runtime | **151 / 151 paths** | `ApiCoverageTest.agent server catalog matches the spec exactly` |
-| Production wiring | **218 / 218 paths** | `ApiCoverageTest.every catalog path is referenced in production source` |
-| Unit tests | **97 passing, 0 failures** | `./gradlew testDebugUnitTest` |
+| Cloud `/api/v1` (in scope) | **67 / 67 paths** | `ApiCoverageTest.cloud v1 catalog matches the spec exactly` |
+| Agent-server runtime (in scope) | **151 / 151 paths** | `ApiCoverageTest.agent server catalog matches the spec exactly` |
+| Cloud non-`/api/v1` | **190 explicitly out of scope** | `ApiCoverageTest.every non-v1 cloud spec path is explicitly scoped out` |
+| Real call-site wiring | **217 / 218 wired** | `ApiCoverageTest.every catalog path is wired to a real call site in production source` |
+| Unit tests | **105 passing, 0 failures** | `./gradlew testDebugUnitTest` |
 | Debug build | **passing** | `./gradlew assembleDebug` |
 
-The 5 Cloud `webhooks/*` paths are server-to-server callbacks (Cloud calls the
-sandbox, not the other way round) but are now **implemented** so the app can act
-as a sandbox host and so the coverage proof is complete.
+The single unwired path is `GET /api/bash/bash_events/`, which requires a JSON
+request body on a GET. OkHttp refuses that ("method GET must not have a request
+body"), so it is declared in `EndpointCatalog.UNWIRED_BY_TRANSPORT` and a test
+asserts (a) the declaration is real and (b) the path is still genuinely unwired —
+so the escape hatch cannot be abused. The same events are reachable through
+`/api/bash/bash_events/search` and `/api/bash/bash_events/{event_id}`.
+
+**Scope statement (not "100% of the whole API").** The claim is *100% of the
+cloud `/api/v1` surface* and *100% of the agent-server surface*. The remaining
+190 cloud paths are **not** implemented and are not pretended to be: they are
+org-admin (`/api/admin`, `/api/organizations`, `/api/service`, `/api/keys`,
+`/api/license`, `/api/quota`, `/api/billing`, `/api/analytics`), interactive web
+sign-in / onboarding (`/oauth`, `/saml`, `/api/idp*`, `/api/authenticate`,
+`/api/logout`, `/api/keycloak`, `/api/accept_tos`, `/api/complete_onboarding`,
+`/saas`), inbound webhook receivers (`/integration/*`, `/slack/*`), anonymous
+public share views (`/api/shared-*`), and liveness probes and management routes
+that the agent-server surface already covers. They are enumerated in
+`EndpointCatalog.OUT_OF_SCOPE_CLOUD` and enforced by test #3 above.
 
 ### 0.1 Live runtime verification
 
@@ -57,6 +81,12 @@ against MockWebServer. Representative results:
 | `PUT`/`DELETE /api/settings/secrets` | `200` (create then delete) |
 | `POST /v1/chat/completions`, `/v1/responses` | `200` |
 | `POST /api/hooks` | `200` |
+| `GET /api/canvas-extensions/installed` | `200` `{"canvas_extensions":[]}` |
+| `GET /api/bash/bash_events/` (GET with JSON body) | `200` with the requested events |
+| `GET /api/conversations/{id}/file/download-trajectory/{id}` | `200` (binary) |
+| `GET /api/file/download-trajectory/{id}` | `200` (binary) |
+| `GET /api/conversations/{id}/git/{changes,commits,diff}` | route present — `422` `path must be inside the conversation workspace` for a bad path (a missing route returns `404`) |
+| `GET /api/conversations/{id}/file/archive` | route present — `422` on a path outside the workspace |
 
 ### 0.2 Keep-alive is proven, not assumed
 
@@ -72,16 +102,16 @@ falls back to the cloud proxy only when the sandbox is unreachable.
 
 ## 1. Introduction / Overview
 
-`ohaa` is an Android client for OpenHands Cloud. Today it talks to **21** of the
-**67** Cloud `/api/v1` endpoints and **14** agent-server endpoints. That still leaves
-the app unable to do some of what the product can do: switch models mid-conversation,
-choose an ACP agent (Claude Code, Codex, Gemini CLI, Kimi, OpenCode), compact
-context, run slash commands, browse the sandbox filesystem, run git operations,
-manage secrets, skills, and MCP servers.
+`ohaa` is an Android client for OpenHands Cloud. The goal is that the app can do
+everything a normal user can do from the web product: switch models
+mid-conversation, choose an ACP agent (Claude Code, Codex, Gemini CLI, Kimi,
+OpenCode), compact context, run slash commands, browse the sandbox filesystem,
+run git operations, manage secrets, skills, and MCP servers.
 
 This PRD defines **full, explicit coverage of every sorted API and SDK option that
 makes sense on a phone**, each with the UI surface that must exist for it. Anything
-deliberately excluded is listed in Non-Goals with a reason, so nothing is silently
+deliberately excluded is listed in Non-Goals (and, for cloud routes, in
+`EndpointCatalog.OUT_OF_SCOPE_CLOUD`) with a reason, so nothing is silently
 dropped.
 
 Two API surfaces are in scope and they are **different**:
@@ -385,9 +415,29 @@ conversation start request. Each needs a control.
 
 ## 6. Non-Goals (Out of Scope)
 
-- **Admin endpoints** (`/api/admin/*`, `/api/organizations/*`) — require org-admin scope; not part of a personal client. (They live outside the two in-scope surfaces and are therefore not in the coverage proof.)
-- **`/api/keys/llm/byor*`** — BYOR key rotation is an admin/enterprise flow.
-- **Service-account and org-level secret management** — personal secrets only.
+The cloud routes excluded from this client are **enumerated in
+`EndpointCatalog.OUT_OF_SCOPE_CLOUD` and enforced by `ApiCoverageTest`**, so they
+cannot be silently forgotten or silently added. The groups:
+
+- **Admin endpoints** (`/api/admin/*`, `/api/organizations/*`, `/api/service/*`,
+  `/api/keys/*`, `/api/license*`, `/api/quota/*`, `/api/billing/*`,
+  `/api/analytics/*`) — require org-admin / billing scope; not part of a personal
+  client.
+- **Interactive web sign-in / onboarding** (`/oauth/*`, `/saml/*`, `/api/idp*`,
+  `/api/authenticate`, `/api/logout`, `/api/keycloak/*`, `/api/accept_tos`,
+  `/api/complete_onboarding`, `/api/onboarding_status`, `/saas`) — the app
+  delegates these to the browser rather than re-implementing a login UI.
+- **Inbound webhook receivers** (`/integration/*`, `/slack/*`) — server-to-server
+  callbacks; nothing for a phone client to call.
+- **Anonymous public share views** (`/api/shared-conversations`,
+  `/api/shared-events*`).
+- **Liveness probes and management routes already served by the agent-server**
+  (`/alive`, `/health`, `/ready`, `/server_info`, `/api/tools/catalog`,
+  `/api/agent-profiles*`, `/api/users/app`) — the app polls the per-sandbox
+  surface instead, which is where the data for the user's own sandbox lives.
+
+Other deliberate limits:
+
 - **Full VS Code IDE** — we link out to `vscode/url`; we do not embed an editor.
 - **Streaming SSE/websocket event transport** in v1 of this PRD — polling stays; streaming is a follow-up.
 - **A terminal emulator with PTY** — command execution only, no interactive shell.
@@ -426,7 +476,11 @@ other catalog endpoint.
 
 ## 9. Success Metrics
 
-- Endpoint coverage: from 11 to ≥ 60 of the 67 Cloud endpoints and ≥ 40 agent-server endpoints.
+- Endpoint coverage: **67 / 67** Cloud `/api/v1` paths and **151 / 151**
+  agent-server paths, each with a real call site (machine-checked by
+  `ApiCoverageTest`).
+- The remaining 190 cloud paths are explicitly out of scope and machine-enforced
+  as such — no silent gaps.
 - A user can, without leaving the app: start a task, switch model, compact context, run a command, read a diff, and manage a secret.
 - Zero unhandled-error crashes when the sandbox is PAUSED or MISSING.
 - Keep-alive tests stay green.

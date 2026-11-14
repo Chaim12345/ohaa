@@ -3,6 +3,16 @@ package com.example.data.repository
 import com.example.data.api.ApiClient
 import com.example.data.api.AgentServerApiService
 import com.example.data.local.ConversationDao
+import com.example.data.model.InstallCanvasExtensionRequest
+import com.example.data.model.InstalledCanvasExtensionDto
+import com.example.data.model.InstalledCanvasExtensionsListDto
+import com.example.data.model.UpdateCanvasExtensionStateRequest
+import com.example.data.model.UpdateCanvasExtensionStateDto
+import com.example.data.model.UninstallCanvasExtensionDto
+import com.example.data.model.CanvasBackendStatusDto
+import com.example.data.model.CanvasBackendLogsDto
+import com.example.data.model.BackendRevisionRequest
+import com.example.data.model.BackendSecretGrantRequest
 import com.example.data.model.ActivateAgentProfileDto
 import com.example.data.model.ActivateMetaProfileDto
 import com.example.data.model.ActivateProfileResponseDto
@@ -1398,4 +1408,309 @@ class AgentServerRepository(
             val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
             call { t.service.openAiResponses(endpoint(t.baseUrl, "/v1/responses"), body) }.map { it.string() }
         }
+
+    // ---- canvas extensions ------------------------------------------------
+
+    suspend fun installCanvasExtension(
+        conversationId: String,
+        source: String,
+        ref: String? = null,
+        repoPath: String? = null,
+        force: Boolean = false,
+    ): Result<InstalledCanvasExtensionDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.installCanvasExtension(
+                endpoint(t.baseUrl, "/api/canvas-extensions/install"),
+                InstallCanvasExtensionRequest(source = source, ref = ref, repoPath = repoPath, force = force),
+            )
+        }
+    }
+
+    suspend fun canvasExtensions(conversationId: String): Result<List<InstalledCanvasExtensionDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.listCanvasExtensions(endpoint(t.baseUrl, "/api/canvas-extensions/installed")) }
+                .map { it.canvasExtensions.orEmpty() }
+        }
+
+    suspend fun canvasExtension(conversationId: String, name: String): Result<InstalledCanvasExtensionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getCanvasExtension(endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name"))
+            }
+        }
+
+    suspend fun updateCanvasExtensionState(
+        conversationId: String,
+        name: String,
+        enabled: Boolean,
+        revision: String? = null,
+        secretRefs: List<String>? = null,
+    ): Result<UpdateCanvasExtensionStateDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.updateCanvasExtensionState(
+                endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name"),
+                UpdateCanvasExtensionStateRequest(enabled = enabled, revision = revision, secretRefs = secretRefs),
+            )
+        }
+    }
+
+    suspend fun uninstallCanvasExtension(conversationId: String, name: String): Result<UninstallCanvasExtensionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.uninstallCanvasExtension(endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name"))
+            }
+        }
+
+    suspend fun canvasBackendStatus(conversationId: String, name: String): Result<CanvasBackendStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getCanvasBackendStatus(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend")
+                )
+            }
+        }
+
+    suspend fun deleteCanvasBackendData(conversationId: String, name: String): Result<CanvasBackendStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.deleteCanvasBackendData(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/data")
+                )
+            }
+        }
+
+    suspend fun canvasBackendLogs(
+        conversationId: String,
+        name: String,
+        limitBytes: Int? = null,
+    ): Result<CanvasBackendLogsDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.getCanvasBackendLogs(
+                endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/logs"),
+                limitBytes = limitBytes,
+            )
+        }
+    }
+
+    suspend fun prepareCanvasBackend(
+        conversationId: String,
+        name: String,
+        revision: String,
+    ): Result<CanvasBackendStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.prepareCanvasBackend(
+                endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/prepare"),
+                BackendRevisionRequest(revision = revision),
+            )
+        }
+    }
+
+    suspend fun grantCanvasBackendSecret(
+        conversationId: String,
+        name: String,
+        revision: String,
+        secretRefs: List<String>,
+    ): Result<CanvasBackendStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.grantCanvasBackendSecret(
+                endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/secret-grant"),
+                BackendSecretGrantRequest(revision = revision, secretRefs = secretRefs),
+            )
+        }
+    }
+
+    suspend fun revokeCanvasBackendSecret(conversationId: String, name: String): Result<CanvasBackendStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.revokeCanvasBackendSecret(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/secret-grant")
+                )
+            }
+        }
+
+    suspend fun startCanvasBackend(
+        conversationId: String,
+        name: String,
+        revision: String,
+    ): Result<CanvasBackendStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.startCanvasBackend(
+                endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/start"),
+                BackendRevisionRequest(revision = revision),
+            )
+        }
+    }
+
+    suspend fun stopCanvasBackend(conversationId: String, name: String): Result<CanvasBackendStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.stopCanvasBackend(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/backend/stop")
+                )
+            }
+        }
+
+    suspend fun canvasExtensionBundle(conversationId: String, name: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getCanvasExtensionBundle(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/bundle")
+                )
+            }.map { it.string() }
+        }
+
+    suspend fun canvasExtensionIcon(conversationId: String, name: String): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getCanvasExtensionIcon(
+                    endpoint(t.baseUrl, "/api/canvas-extensions/installed/$name/icon")
+                )
+            }.map { it.bytes() }
+        }
+
+    // ---- conversation-scoped files ----------------------------------------
+
+    suspend fun downloadConversationFile(
+        conversationId: String,
+        path: String,
+    ): Result<ByteArray> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.downloadConversationFile(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/file/download"), path
+            )
+        }.map { it.bytes() }
+    }
+
+    suspend fun uploadConversationFile(
+        conversationId: String,
+        path: String,
+        bytes: ByteArray,
+        fileName: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        val body = bytes.toRequestBody("application/octet-stream".toMediaType())
+        val part = MultipartBody.Part.createFormData("file", fileName, body)
+        call {
+            t.service.uploadConversationFile(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/file/upload"), path, part
+            )
+        }.map { _ -> Unit }
+    }
+
+    suspend fun createConversationDirectory(
+        conversationId: String,
+        path: String,
+    ): Result<SuccessResponse> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.createConversationDirectory(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/file/create_directory"), path
+            )
+        }
+    }
+
+    suspend fun archiveConversationFiles(
+        conversationId: String,
+        path: String,
+        format: String? = null,
+        baseRef: String? = null,
+        useDefaultExcludes: Boolean? = null,
+    ): Result<ByteArray> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.archiveConversationFiles(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/file/archive"),
+                path = path, format = format, baseRef = baseRef, useDefaultExcludes = useDefaultExcludes,
+            )
+        }.map { it.bytes() }
+    }
+
+    suspend fun downloadConversationTrajectory(conversationId: String): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.downloadConversationTrajectory(
+                    endpoint(
+                        t.baseUrl,
+                        "/api/conversations/$conversationId/file/download-trajectory/$conversationId"
+                    )
+                )
+            }.map { it.bytes() }
+        }
+
+    suspend fun downloadTrajectory(conversationId: String): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.downloadTrajectory(
+                    endpoint(t.baseUrl, "/api/file/download-trajectory/$conversationId")
+                )
+            }.map { it.bytes() }
+        }
+
+    // ---- conversation-scoped git ------------------------------------------
+
+    suspend fun conversationGitChanges(
+        conversationId: String,
+        path: String? = null,
+        ref: String? = null,
+    ): Result<List<GitChange>> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.getConversationGitChanges(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/git/changes"),
+                path = path, ref = ref,
+            )
+        }.map { list ->
+            list.mapNotNull { dto ->
+                val p = dto?.path?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                GitChange(status = dto.status ?: "MODIFIED", path = p)
+            }
+        }
+    }
+
+    suspend fun conversationGitCommits(
+        conversationId: String,
+        path: String? = null,
+        limit: Int = 30,
+    ): Result<GitCommitsPageDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.getConversationGitCommits(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/git/commits"),
+                path = path, limit = limit,
+            )
+        }
+    }
+
+    suspend fun conversationGitDiff(
+        conversationId: String,
+        path: String? = null,
+        ref: String? = null,
+        commit: String? = null,
+    ): Result<GitDiffDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.getConversationGitDiff(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/git/diff"),
+                path = path, ref = ref, commit = commit,
+            )
+        }
+    }
 }

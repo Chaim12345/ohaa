@@ -437,4 +437,81 @@ class AgentServerRepositoryTest {
         assertEquals("/api/conversations/conv-1/navigate", recorded.path)
         assertTrue(recorded.body.readUtf8().contains("evt-3"))
     }
+
+    // ---- newly added surfaces ---------------------------------------------
+
+    @Test
+    fun `list canvas extensions hits the installed endpoint`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"canvas_extensions":[]}"""))
+
+        val result = repository.canvasExtensions("conv-1")
+
+        assertTrue(result.isSuccess)
+        assertEquals("/api/canvas-extensions/installed", server.takeRequest().path)
+    }
+
+    @Test
+    fun `install canvas extension posts the source`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"name":"demo","source":"gh/x"}"""))
+
+        repository.installCanvasExtension("conv-1", source = "gh/x", ref = "main", force = true)
+
+        val recorded = server.takeRequest()
+        assertEquals("/api/canvas-extensions/install", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue(body.contains("\"source\":\"gh/x\""))
+        assertTrue(body.contains("\"ref\":\"main\""))
+        assertTrue(body.contains("\"force\":true"))
+    }
+
+    @Test
+    fun `start canvas backend posts to the extension backend start route`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"name":"demo","state":"running"}"""))
+
+        repository.startCanvasBackend("conv-1", "demo", revision = "r1")
+
+        val recorded = server.takeRequest()
+        assertEquals("/api/canvas-extensions/installed/demo/backend/start", recorded.path)
+        assertTrue(recorded.body.readUtf8().contains("\"revision\":\"r1\""))
+    }
+
+    @Test
+    fun `conversation scoped git changes hits the conversation route with path`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""[{"status":"UPDATED","path":"a.txt"}]"""))
+
+        val result = repository.conversationGitChanges("conv-1", path = "/workspace/project")
+
+        assertEquals(listOf("a.txt"), result.getOrNull()?.map { it.path })
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.startsWith("/api/conversations/conv-1/git/changes"))
+        assertTrue(recorded.path!!.contains("path="))
+    }
+
+    @Test
+    fun `conversation scoped git diff hits the conversation route`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"original":"a","modified":"b"}"""))
+
+        repository.conversationGitDiff("conv-1", path = "/workspace")
+
+        assertEquals("/api/conversations/conv-1/git/diff?path=%2Fworkspace", server.takeRequest().path)
+    }
+
+    @Test
+    fun `download conversation trajectory hits the trajectory route`() = runBlocking {
+        seed()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("traj-bytes"))
+
+        val result = repository.downloadConversationTrajectory("conv-1")
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            "/api/conversations/conv-1/file/download-trajectory/conv-1",
+            server.takeRequest().path,
+        )
+    }
 }

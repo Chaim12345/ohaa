@@ -1,5 +1,15 @@
 package com.example.data.api
 
+import com.example.data.model.InstallCanvasExtensionRequest
+import com.example.data.model.InstalledCanvasExtensionDto
+import com.example.data.model.InstalledCanvasExtensionsListDto
+import com.example.data.model.UpdateCanvasExtensionStateRequest
+import com.example.data.model.UpdateCanvasExtensionStateDto
+import com.example.data.model.UninstallCanvasExtensionDto
+import com.example.data.model.CanvasBackendStatusDto
+import com.example.data.model.CanvasBackendLogsDto
+import com.example.data.model.BackendRevisionRequest
+import com.example.data.model.BackendSecretGrantRequest
 import com.example.data.model.ActivateAgentProfileDto
 import com.example.data.model.ActivateMetaProfileDto
 import com.example.data.model.ActivateProfileResponseDto
@@ -881,4 +891,137 @@ interface AgentServerApiService {
         @Url url: String,
         @Body body: Map<String, Any>,
     ): Response<ResponseBody>
+
+    // ---- canvas extensions -------------------------------------------------
+
+    @POST
+    suspend fun installCanvasExtension(
+        @Url url: String,
+        @Body body: InstallCanvasExtensionRequest,
+    ): Response<InstalledCanvasExtensionDto>
+
+    @GET
+    suspend fun listCanvasExtensions(@Url url: String): Response<InstalledCanvasExtensionsListDto>
+
+    @GET
+    suspend fun getCanvasExtension(@Url url: String): Response<InstalledCanvasExtensionDto>
+
+    @PATCH
+    suspend fun updateCanvasExtensionState(
+        @Url url: String,
+        @Body body: UpdateCanvasExtensionStateRequest,
+    ): Response<UpdateCanvasExtensionStateDto>
+
+    @DELETE
+    suspend fun uninstallCanvasExtension(@Url url: String): Response<UninstallCanvasExtensionDto>
+
+    @GET
+    suspend fun getCanvasBackendStatus(@Url url: String): Response<CanvasBackendStatusDto>
+
+    @DELETE
+    suspend fun deleteCanvasBackendData(@Url url: String): Response<CanvasBackendStatusDto>
+
+    @GET
+    suspend fun getCanvasBackendLogs(
+        @Url url: String,
+        @Query("limit_bytes") limitBytes: Int? = null,
+    ): Response<CanvasBackendLogsDto>
+
+    @POST
+    suspend fun prepareCanvasBackend(
+        @Url url: String,
+        @Body body: BackendRevisionRequest,
+    ): Response<CanvasBackendStatusDto>
+
+    @POST
+    suspend fun grantCanvasBackendSecret(
+        @Url url: String,
+        @Body body: BackendSecretGrantRequest,
+    ): Response<CanvasBackendStatusDto>
+
+    @DELETE
+    suspend fun revokeCanvasBackendSecret(@Url url: String): Response<CanvasBackendStatusDto>
+
+    @POST
+    suspend fun startCanvasBackend(
+        @Url url: String,
+        @Body body: BackendRevisionRequest,
+    ): Response<CanvasBackendStatusDto>
+
+    @POST
+    suspend fun stopCanvasBackend(@Url url: String): Response<CanvasBackendStatusDto>
+
+    @Streaming
+    @GET
+    suspend fun getCanvasExtensionBundle(@Url url: String): Response<ResponseBody>
+
+    @Streaming
+    @GET
+    suspend fun getCanvasExtensionIcon(@Url url: String): Response<ResponseBody>
+
+    // ---- conversation-scoped files -----------------------------------------
+
+    @Streaming
+    @GET
+    suspend fun downloadConversationFile(
+        @Url url: String,
+        @Query("path") path: String,
+    ): Response<ResponseBody>
+
+    @Multipart
+    @POST
+    suspend fun uploadConversationFile(
+        @Url url: String,
+        @Query("path") path: String,
+        @Part file: MultipartBody.Part,
+    ): Response<FileUploadResultDto>
+
+    @POST
+    suspend fun createConversationDirectory(
+        @Url url: String,
+        @Query("path") path: String,
+    ): Response<SuccessResponse>
+
+    @Streaming
+    @GET
+    suspend fun archiveConversationFiles(
+        @Url url: String,
+        @Query("path") path: String,
+        @Query("format") format: String? = null,
+        @Query("base_ref") baseRef: String? = null,
+        @Query("use_default_excludes") useDefaultExcludes: Boolean? = null,
+    ): Response<ResponseBody>
+
+    @Streaming
+    @GET
+    suspend fun downloadConversationTrajectory(@Url url: String): Response<ResponseBody>
+
+    @Streaming
+    @GET
+    suspend fun downloadTrajectory(@Url url: String): Response<ResponseBody>
+
+    // ---- conversation-scoped git -------------------------------------------
+
+    @GET
+    suspend fun getConversationGitChanges(
+        @Url url: String,
+        @Query("path") path: String? = null,
+        @Query("ref") ref: String? = null,
+    ): Response<List<GitChangeDto?>>
+
+    @GET
+    suspend fun getConversationGitCommits(
+        @Url url: String,
+        @Query("path") path: String? = null,
+        @Query("limit") limit: Int = 30,
+    ): Response<GitCommitsPageDto>
+
+    @GET
+    suspend fun getConversationGitDiff(
+        @Url url: String,
+        @Query("path") path: String? = null,
+        @Query("ref") ref: String? = null,
+        @Query("commit") commit: String? = null,
+    ): Response<GitDiffDto>
+
 }

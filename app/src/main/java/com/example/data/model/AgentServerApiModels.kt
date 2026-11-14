@@ -372,3 +372,84 @@ data class OpenAiModelListDto(
     @param:Json(name = "object") val objectType: String? = null,
     @param:Json(name = "data") val data: List<Map<String, Any>>? = null,
 )
+
+// ---------------------------------------------------------------------------
+// Canvas extensions (install / manage / backend lifecycle)
+// ---------------------------------------------------------------------------
+
+@JsonClass(generateAdapter = true)
+data class InstallCanvasExtensionRequest(
+    @param:Json(name = "source") val source: String,
+    @param:Json(name = "ref") val ref: String? = null,
+    @param:Json(name = "repo_path") val repoPath: String? = null,
+    @param:Json(name = "force") val force: Boolean = false,
+)
+
+@JsonClass(generateAdapter = true)
+data class InstalledCanvasExtensionDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "version") val version: String? = null,
+    @param:Json(name = "description") val description: String? = null,
+    @param:Json(name = "enabled") val enabled: Boolean? = null,
+    @param:Json(name = "source") val source: String? = null,
+    @param:Json(name = "requested_ref") val requestedRef: String? = null,
+    @param:Json(name = "resolved_ref") val resolvedRef: String? = null,
+    @param:Json(name = "repo_path") val repoPath: String? = null,
+    @param:Json(name = "installed_at") val installedAt: String? = null,
+    @param:Json(name = "install_path") val installPath: String? = null,
+    @param:Json(name = "manifest") val manifest: Map<String, Any>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class InstalledCanvasExtensionsListDto(
+    @param:Json(name = "canvas_extensions") val canvasExtensions: List<InstalledCanvasExtensionDto>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateCanvasExtensionStateRequest(
+    @param:Json(name = "enabled") val enabled: Boolean,
+    @param:Json(name = "revision") val revision: String? = null,
+    @param:Json(name = "secret_refs") val secretRefs: List<String>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateCanvasExtensionStateDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "enabled") val enabled: Boolean? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class UninstallCanvasExtensionDto(
+    @param:Json(name = "message") val message: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class CanvasBackendStatusDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "state") val state: String? = null,
+    @param:Json(name = "revision") val revision: String? = null,
+    @param:Json(name = "prepared_revision") val preparedRevision: String? = null,
+    @param:Json(name = "secret_refs") val secretRefs: List<String>? = null,
+    @param:Json(name = "secret_grant_revision") val secretGrantRevision: String? = null,
+    @param:Json(name = "pid") val pid: Int? = null,
+    @param:Json(name = "port") val port: Int? = null,
+    @param:Json(name = "detail") val detail: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class CanvasBackendLogsDto(
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "logs") val logs: String? = null,
+    @param:Json(name = "truncated") val truncated: Boolean = false,
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendRevisionRequest(
+    @param:Json(name = "revision") val revision: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class BackendSecretGrantRequest(
+    @param:Json(name = "revision") val revision: String,
+    @param:Json(name = "secret_refs") val secretRefs: List<String>,
+)
