@@ -1,6 +1,59 @@
 package com.example.data.api
 
+import com.example.data.model.ActivateAgentProfileDto
+import com.example.data.model.ActivateMetaProfileDto
+import com.example.data.model.ActivateProfileResponseDto
+import com.example.data.model.AddWorkspaceParentsRequest
+import com.example.data.model.AddWorkspacesRequest
+import com.example.data.model.AgentConversationPageDto
+import com.example.data.model.AgentProfileDetailDto
+import com.example.data.model.AgentProfileDiagnosticsDto
+import com.example.data.model.AgentProfileMutationDto
 import com.example.data.model.AcpModelDiscoveryDto
+import com.example.data.model.AppBackendSessionDto
+import com.example.data.model.DeleteResponseDto
+import com.example.data.model.GitChangeDto
+import com.example.data.model.GitPullRequestStatusDto
+import com.example.data.model.GitRepositoryPageDto
+import com.example.data.model.HealthStatusDto
+import com.example.data.model.HooksRequestDto
+import com.example.data.model.HooksResponseDto
+import com.example.data.model.InitRequestDto
+import com.example.data.model.InitStatusDto
+import com.example.data.model.InstalledPluginDetailDto
+import com.example.data.model.InstalledSkillDetailDto
+import com.example.data.model.McpOAuthCallbackRequest
+import com.example.data.model.MetaProfileConfigDto
+import com.example.data.model.MetaProfileDetailDto
+import com.example.data.model.MetaProfileListDto
+import com.example.data.model.OpenAiModelListDto
+import com.example.data.model.ProfileMutationResponseDto
+import com.example.data.model.ProviderConnectionCreateRequest
+import com.example.data.model.ProviderConnectionDto
+import com.example.data.model.RenameAgentProfileRequest
+import com.example.data.model.RenameProfileRequest
+import com.example.data.model.RuntimeProfileDetailDto
+import com.example.data.model.RuntimeProfileListDto
+import com.example.data.model.RuntimeSecretItemDto
+import com.example.data.model.RuntimeSecretsListDto
+import com.example.data.model.SaveRuntimeProfileRequest
+import com.example.data.model.SecretCreateRequest
+import com.example.data.model.SendMessageRequestDto
+import com.example.data.model.SettingsSchemaDto
+import com.example.data.model.StartConversationRequest
+import com.example.data.model.SubscriptionDevicePollRequest
+import com.example.data.model.SubscriptionDeviceStartDto
+import com.example.data.model.SubscriptionModelsDto
+import com.example.data.model.SubscriptionStatusDto
+import com.example.data.model.UpdatePluginDto
+import com.example.data.model.UpdatePluginStateDto
+import com.example.data.model.UpdatePluginStateRequest
+import com.example.data.model.UpdateSkillDto
+import com.example.data.model.UpdateSkillStateDto
+import com.example.data.model.UpdateSkillStateRequest
+import com.example.data.model.ValidateProfileResponseDto
+import com.example.data.model.VerifiedModelsDto
+import com.example.data.model.WorkspacesListDto
 import com.example.data.model.AgentFinalResponseDto
 import com.example.data.model.BashEventDto
 import com.example.data.model.BashEventPageDto
@@ -48,7 +101,6 @@ import com.example.data.model.BashOutputDto
 import com.example.data.model.ConversationInfoDto
 import com.example.data.model.ExecuteBashRequest
 import com.example.data.model.FileUploadResultDto
-import com.example.data.model.GitChangeDto
 import com.example.data.model.GitCommitsPageDto
 import com.example.data.model.GitDiffDto
 import com.example.data.model.ServerInfoDto
@@ -67,6 +119,7 @@ import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.PATCH
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Query
 import retrofit2.http.Streaming
@@ -142,6 +195,9 @@ interface AgentServerApiService {
 
     @POST
     suspend fun activateAgentProfile(@Url url: String): Response<SuccessResponse>
+
+    @POST
+    suspend fun activateAgentProfileDetailed(@Url url: String): Response<ActivateAgentProfileDto>
 
     // ---- bash --------------------------------------------------------------
 
@@ -440,4 +496,389 @@ interface AgentServerApiService {
         @Url url: String,
         @Query("path") path: String,
     ): Response<FileArchiveDto>
+
+    // ---- health / init / hooks --------------------------------------------
+
+    @GET
+    suspend fun getHealth(@Url url: String): Response<HealthStatusDto>
+
+    @GET
+    suspend fun getReady(@Url url: String): Response<ResponseBody>
+
+    @GET
+    suspend fun getInitStatus(@Url url: String): Response<InitStatusDto>
+
+    @POST
+    suspend fun init(
+        @Url url: String,
+        @Body body: InitRequestDto,
+    ): Response<InitStatusDto>
+
+    @POST
+    suspend fun getHooks(
+        @Url url: String,
+        @Body body: HooksRequestDto,
+    ): Response<HooksResponseDto>
+
+    // ---- conversations (bare agent-server routes) --------------------------
+
+    @GET
+    suspend fun listConversations(@Url url: String): Response<List<ConversationInfoDto>>
+
+    @GET
+    suspend fun countConversations(@Url url: String): Response<Int>
+
+    @GET
+    suspend fun searchConversations(
+        @Url url: String,
+        @Query("limit") limit: Int = 100,
+        @Query("page_id") pageId: String? = null,
+    ): Response<AgentConversationPageDto>
+
+    @POST
+    suspend fun startConversation(
+        @Url url: String,
+        @Body body: StartConversationRequest,
+    ): Response<ConversationInfoDto>
+
+    @POST
+    suspend fun sendMessage(
+        @Url url: String,
+        @Body body: SendMessageRequestDto,
+    ): Response<SuccessResponse>
+
+    // ---- events ------------------------------------------------------------
+
+    @GET
+    suspend fun getConversationEvents(
+        @Url url: String,
+        @Query("start_id") startId: Int? = null,
+    ): Response<List<Map<String, Any>>>
+
+    @GET
+    suspend fun countConversationEvents(@Url url: String): Response<Int>
+
+    @GET
+    suspend fun searchConversationEvents(
+        @Url url: String,
+        @Query("limit") limit: Int = 100,
+        @Query("page_id") pageId: String? = null,
+    ): Response<ResponseBody>
+
+    @GET
+    suspend fun getConversationEvent(@Url url: String): Response<Map<String, Any>>
+
+    // ---- bash (conversation-prefixed aliases) ------------------------------
+
+    @POST
+    suspend fun executeBashConversation(
+        @Url url: String,
+        @Body body: ExecuteBashRequest,
+    ): Response<BashOutputDto>
+
+    @POST
+    suspend fun startBashConversation(
+        @Url url: String,
+        @Body body: ExecuteBashRequest,
+    ): Response<BashCommandDto>
+
+    @DELETE
+    suspend fun clearConversationBashEvents(@Url url: String): Response<ResponseBody>
+
+    @GET
+    suspend fun listConversationBashEvents(@Url url: String): Response<List<Map<String, Any>>>
+
+    @GET
+    suspend fun searchConversationBashEvents(
+        @Url url: String,
+        @Query("limit") limit: Int = 100,
+        @Query("page_id") pageId: String? = null,
+    ): Response<BashEventPageDto>
+
+    @GET
+    suspend fun getConversationBashEvent(@Url url: String): Response<BashEventDto>
+
+    // ---- git (bare + conversation-prefixed) --------------------------------
+
+    @GET
+    suspend fun getBareGitChanges(
+        @Url url: String,
+        @Query("path") path: String? = null,
+    ): Response<List<GitChangeDto>>
+
+    @GET
+    suspend fun getBareGitCommits(@Url url: String): Response<GitCommitsPageDto>
+
+    @GET
+    suspend fun getBareGitDiff(@Url url: String): Response<GitDiffDto>
+
+    @GET
+    suspend fun getGitCommitChanges(@Url url: String): Response<List<GitChangeDto>>
+
+    @GET
+    suspend fun searchGitRepositories(
+        @Url url: String,
+        @Query("limit") limit: Int = 100,
+        @Query("page_id") pageId: String? = null,
+        @Query("query") query: String? = null,
+    ): Response<GitRepositoryPageDto>
+
+    @GET
+    suspend fun getPullRequest(@Url url: String): Response<GitPullRequestStatusDto>
+
+    // ---- vscode (bare) -----------------------------------------------------
+
+    @GET
+    suspend fun getBareVSCodeUrl(@Url url: String): Response<VSCodeUrlDto>
+
+    @GET
+    suspend fun getBareVSCodeStatus(@Url url: String): Response<Map<String, Any>>
+
+    // ---- workspaces --------------------------------------------------------
+
+    @GET
+    suspend fun listWorkspaces(@Url url: String): Response<WorkspacesListDto>
+
+    @POST
+    suspend fun addWorkspaces(
+        @Url url: String,
+        @Body body: AddWorkspacesRequest,
+    ): Response<WorkspacesListDto>
+
+    @DELETE
+    suspend fun deleteWorkspaces(@Url url: String): Response<DeleteResponseDto>
+
+    @POST
+    suspend fun addWorkspaceParents(
+        @Url url: String,
+        @Body body: AddWorkspaceParentsRequest,
+    ): Response<WorkspacesListDto>
+
+    @DELETE
+    suspend fun deleteWorkspaceParents(@Url url: String): Response<DeleteResponseDto>
+
+    // ---- profiles (LLM) ----------------------------------------------------
+
+    @GET
+    suspend fun listRuntimeProfiles(@Url url: String): Response<RuntimeProfileListDto>
+
+    @GET
+    suspend fun getRuntimeProfile(@Url url: String): Response<RuntimeProfileDetailDto>
+
+    @POST
+    suspend fun saveRuntimeProfile(
+        @Url url: String,
+        @Body body: SaveRuntimeProfileRequest,
+    ): Response<ResponseBody>
+
+    @DELETE
+    suspend fun deleteRuntimeProfile(@Url url: String): Response<ProfileMutationResponseDto>
+
+    @POST
+    suspend fun activateRuntimeProfile(@Url url: String): Response<ActivateProfileResponseDto>
+
+    @POST
+    suspend fun renameRuntimeProfile(
+        @Url url: String,
+        @Body body: RenameProfileRequest,
+    ): Response<ProfileMutationResponseDto>
+
+    @POST
+    suspend fun validateRuntimeProfile(
+        @Url url: String,
+        @Body body: SaveRuntimeProfileRequest,
+    ): Response<ValidateProfileResponseDto>
+
+    // ---- agent profiles ----------------------------------------------------
+
+    @GET
+    suspend fun listAgentProfilesDetailed(@Url url: String): Response<ResponseBody>
+
+    @GET
+    suspend fun getAgentProfile(@Url url: String): Response<AgentProfileDetailDto>
+
+    @POST
+    suspend fun saveAgentProfile(
+        @Url url: String,
+        @Body body: Map<String, Any>,
+    ): Response<AgentProfileMutationDto>
+
+    @DELETE
+    suspend fun deleteAgentProfile(@Url url: String): Response<AgentProfileMutationDto>
+
+    @POST
+    suspend fun materializeAgentProfile(@Url url: String): Response<AgentProfileDiagnosticsDto>
+
+    @POST
+    suspend fun renameAgentProfile(
+        @Url url: String,
+        @Body body: RenameAgentProfileRequest,
+    ): Response<AgentProfileMutationDto>
+
+    // ---- meta profiles -----------------------------------------------------
+
+    @GET
+    suspend fun listMetaProfiles(@Url url: String): Response<MetaProfileListDto>
+
+    @GET
+    suspend fun getMetaProfile(@Url url: String): Response<MetaProfileDetailDto>
+
+    @POST
+    suspend fun saveMetaProfile(
+        @Url url: String,
+        @Body body: MetaProfileConfigDto,
+    ): Response<ResponseBody>
+
+    @DELETE
+    suspend fun deleteMetaProfile(@Url url: String): Response<ProfileMutationResponseDto>
+
+    @POST
+    suspend fun activateMetaProfile(@Url url: String): Response<ActivateMetaProfileDto>
+
+    // ---- plugins / skills (installed-item operations) ----------------------
+
+    @GET
+    suspend fun getInstalledPlugin(@Url url: String): Response<InstalledPluginDetailDto>
+
+    @PATCH
+    suspend fun updatePluginState(
+        @Url url: String,
+        @Body body: UpdatePluginStateRequest,
+    ): Response<UpdatePluginStateDto>
+
+    @DELETE
+    suspend fun uninstallPlugin(@Url url: String): Response<ResponseBody>
+
+    @POST
+    suspend fun refreshPlugin(@Url url: String): Response<UpdatePluginDto>
+
+    @GET
+    suspend fun getPluginMarketplace(@Url url: String): Response<ResponseBody>
+
+    @GET
+    suspend fun getInstalledSkill(@Url url: String): Response<InstalledSkillDetailDto>
+
+    @PATCH
+    suspend fun updateSkillState(
+        @Url url: String,
+        @Body body: UpdateSkillStateRequest,
+    ): Response<UpdateSkillStateDto>
+
+    @DELETE
+    suspend fun uninstallSkill(@Url url: String): Response<ResponseBody>
+
+    @POST
+    suspend fun refreshSkill(@Url url: String): Response<UpdateSkillDto>
+
+    // ---- settings schemas + secrets ----------------------------------------
+
+    @GET
+    suspend fun getAgentSettingsSchema(@Url url: String): Response<SettingsSchemaDto>
+
+    @GET
+    suspend fun getConversationSettingsSchema(@Url url: String): Response<SettingsSchemaDto>
+
+    @GET
+    suspend fun listRuntimeSecrets(@Url url: String): Response<RuntimeSecretsListDto>
+
+    @PUT
+    suspend fun createRuntimeSecret(
+        @Url url: String,
+        @Body body: SecretCreateRequest,
+    ): Response<RuntimeSecretItemDto>
+
+    @GET
+    suspend fun getRuntimeSecret(@Url url: String): Response<ResponseBody>
+
+    @DELETE
+    suspend fun deleteRuntimeSecret(@Url url: String): Response<ResponseBody>
+
+    // ---- tools (bare) ------------------------------------------------------
+
+    @GET
+    suspend fun getBareToolCatalog(@Url url: String): Response<List<String>>
+
+    // ---- llm provider connections ------------------------------------------
+
+    @GET
+    suspend fun listProviderConnections(@Url url: String): Response<List<ProviderConnectionDto>>
+
+    @POST
+    suspend fun createProviderConnection(
+        @Url url: String,
+        @Body body: ProviderConnectionCreateRequest,
+    ): Response<ProviderConnectionDto>
+
+    @PATCH
+    suspend fun updateProviderConnection(
+        @Url url: String,
+        @Body body: ProviderConnectionCreateRequest,
+    ): Response<ProviderConnectionDto>
+
+    @DELETE
+    suspend fun deleteProviderConnection(@Url url: String): Response<ProviderConnectionDto>
+
+    @GET
+    suspend fun getVerifiedModels(@Url url: String): Response<VerifiedModelsDto>
+
+    // ---- OpenAI subscription -----------------------------------------------
+
+    @GET
+    suspend fun getSubscriptionStatus(@Url url: String): Response<SubscriptionStatusDto>
+
+    @POST
+    suspend fun startSubscriptionDevice(@Url url: String): Response<SubscriptionDeviceStartDto>
+
+    @POST
+    suspend fun pollSubscriptionDevice(
+        @Url url: String,
+        @Body body: SubscriptionDevicePollRequest,
+    ): Response<SubscriptionStatusDto>
+
+    @POST
+    suspend fun logoutSubscription(@Url url: String): Response<SubscriptionStatusDto>
+
+    @GET
+    suspend fun getSubscriptionModels(@Url url: String): Response<SubscriptionModelsDto>
+
+    // ---- mcp oauth callback ------------------------------------------------
+
+    @POST
+    suspend fun mcpOAuthCallback(
+        @Url url: String,
+        @Body body: McpOAuthCallbackRequest,
+    ): Response<McpOAuthStatusResponseDto>
+
+    // ---- canvas extension app backends -------------------------------------
+
+    @POST
+    suspend fun createAppBackendSession(@Url url: String): Response<AppBackendSessionDto>
+
+    @DELETE
+    suspend fun deleteAppBackendSession(@Url url: String): Response<ResponseBody>
+
+    // ---- auth workspace session --------------------------------------------
+
+    @POST
+    suspend fun createWorkspaceSession(@Url url: String): Response<ResponseBody>
+
+    @DELETE
+    suspend fun deleteWorkspaceSession(@Url url: String): Response<ResponseBody>
+
+    // ---- OpenAI-compatible surface -----------------------------------------
+
+    @GET
+    suspend fun listOpenAiModels(@Url url: String): Response<OpenAiModelListDto>
+
+    @POST
+    suspend fun openAiChatCompletions(
+        @Url url: String,
+        @Body body: Map<String, Any>,
+    ): Response<ResponseBody>
+
+    @POST
+    suspend fun openAiResponses(
+        @Url url: String,
+        @Body body: Map<String, Any>,
+    ): Response<ResponseBody>
 }

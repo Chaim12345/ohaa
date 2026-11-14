@@ -311,8 +311,10 @@ data class InstallPluginRequest(
 
 @JsonClass(generateAdapter = true)
 data class McpTestRequest(
-    @param:Json(name = "server") val server: String? = null,
-    @param:Json(name = "url") val url: String? = null,
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "server") val server: Map<String, Any>? = null,
+    @param:Json(name = "timeout") val timeout: Int? = null,
+    @param:Json(name = "tool_call") val toolCall: Map<String, Any>? = null,
 )
 
 @JsonClass(generateAdapter = true)

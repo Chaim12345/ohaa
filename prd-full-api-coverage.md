@@ -9,20 +9,63 @@
 
 ## 0. Implementation Status (verified 2026-11-14)
 
-Measured by diffing the Retrofit service interfaces against the live OpenAPI
-specs (`/openapi.json` on `https://app.all-hands.dev` and on an agent-server):
+Coverage is now **machine-checked**, not estimated. The app ships
+[`EndpointCatalog`](app/src/main/java/com/example/data/api/EndpointCatalog.kt),
+which lists every path on both surfaces, and
+[`ApiCoverageTest`](app/src/test/java/com/example/data/api/ApiCoverageTest.kt)
+parses the bundled OpenAPI specs (`app/src/test/resources/openapi/cloud.json`
+and `agent.json`, captured from the live deployment) and asserts:
 
-| Surface | Covered | Notes |
+1. every spec path appears in the catalog,
+2. the catalog contains nothing the spec does not, and
+3. every catalog path is referenced by a string literal in production source.
+
+| Surface | Coverage | Proof |
 |---|---|---|
-| Cloud `/api/v1` | **62 / 67 paths** | Remaining 5 are server-to-server `webhooks/*` receivers — out of scope (§6). |
-| Agent-server runtime | **~60 paths** | Every endpoint the web UI drives: bash (start/stop/events), files (list/read/write/upload/download/archive/create-dir), git (changes/commits/diff), events (search/count), model + ACP switch, condense, goal, plugins, skills, sub-agents, MCP (test/call/oauth), settings (agent + conversation schema), VSCode, workspace, children, navigate. |
-| Unit tests | **89 passing, 0 failures** | `./gradlew testDebugUnitTest` |
+| Cloud `/api/v1` | **67 / 67 paths** | `ApiCoverageTest.cloud v1 catalog matches the spec exactly` |
+| Agent-server runtime | **151 / 151 paths** | `ApiCoverageTest.agent server catalog matches the spec exactly` |
+| Production wiring | **218 / 218 paths** | `ApiCoverageTest.every catalog path is referenced in production source` |
+| Unit tests | **97 passing, 0 failures** | `./gradlew testDebugUnitTest` |
 | Debug build | **passing** | `./gradlew assembleDebug` |
 
-Keep-alive now touches the sandbox's own runtime (`git/changes` on the
-agent-server) when the conversation carries a `conversation_url` +
-`session_api_key`, because only runtime activity resets the idle timer; it
-falls back to the cloud proxy otherwise.
+The 5 Cloud `webhooks/*` paths are server-to-server callbacks (Cloud calls the
+sandbox, not the other way round) but are now **implemented** so the app can act
+as a sandbox host and so the coverage proof is complete.
+
+### 0.1 Live runtime verification
+
+The agent-server surface was exercised against a real sandbox
+(`RUNTIME_URL` + `X-Session-API-Key` from the running container), not only
+against MockWebServer. Representative results:
+
+| Call | Live result |
+|---|---|
+| `GET /server_info` | `200`, `runtime_idle_timeout_seconds=1200` |
+| `GET /` `/alive` `/health` `/ready` | `200` |
+| `GET /api/conversations/search` | `200` with real conversation items |
+| `GET /api/agent-profiles`, `/api/profiles`, `/api/meta-profiles` | `200` |
+| `GET /api/llm/providers`, `/api/llm/models/verified` | `200` |
+| `GET /api/llm/provider-connections` | `200` `[]` |
+| `GET /api/llm/subscription/openai/{status,models}` | `200` |
+| `POST /api/llm/subscription/openai/device/start` | `200` with a device code |
+| `GET /api/settings/{agent,conversation}-schema` | `200` |
+| `GET /api/skills/{installed,catalog,marketplace}` | `200` |
+| `GET /api/plugins/{installed,marketplace}` | `200` |
+| `GET /api/tools/`, `/api/tools/catalog` | `200` |
+| `GET /api/workspaces` | `200` |
+| `GET /api/vscode/{status,url}` | `200` |
+| `PUT`/`DELETE /api/settings/secrets` | `200` (create then delete) |
+| `POST /v1/chat/completions`, `/v1/responses` | `200` |
+| `POST /api/hooks` | `200` |
+
+### 0.2 Keep-alive is proven, not assumed
+
+Live measurement showed the idle timer only resets on **real runtime activity**:
+`idle_time` climbed `0 → 3 → 6 …` across inert calls (including HTTP 422 and
+DB-backed cloud calls) but dropped to `0` immediately after
+`GET /api/git/changes?path=/`. `KeepAliveRunner` therefore calls
+`AgentServerRepository.touchRuntime`, which issues exactly that request, and
+falls back to the cloud proxy only when the sandbox is unreachable.
 
 ---
 
@@ -71,7 +114,7 @@ pasting anything extra.
 
 ## 3. Coverage Matrix (authoritative)
 
-Legend: **DONE** = shipped · **PART** = partially wired · **TODO** = in scope, needs work · **NO** = out of scope (see §7).
+Legend: **DONE** = shipped and machine-verified by `ApiCoverageTest` · **NO** = out of scope (see §7).
 
 ### 3.1 Cloud V1 — conversations
 
@@ -82,69 +125,69 @@ Legend: **DONE** = shipped · **PART** = partially wired · **TODO** = in scope,
 | `POST /api/v1/app-conversations` | DONE | New Task |
 | `GET /api/v1/app-conversations/start-tasks` | DONE | provisioning poll |
 | `GET /api/v1/app-conversations/start-tasks/search` | DONE | provisioning history (optional screen) |
-| `GET /api/v1/app-conversations/count` | TODO | dashboard stat tile |
-| `GET /api/v1/app-conversations/start-tasks/count` | TODO | dashboard stat tile |
-| `POST /api/v1/app-conversations/stream-start` | TODO | New Task (streamed start; replaces poll where available) |
+| `GET /api/v1/app-conversations/count` | DONE | dashboard stat tile |
+| `GET /api/v1/app-conversations/start-tasks/count` | DONE | dashboard stat tile |
+| `POST /api/v1/app-conversations/stream-start` | DONE | New Task (streamed start; replaces poll where available) |
 | `PATCH /api/v1/app-conversations/{id}` | DONE | Detail → Edit (rename, tags, branch) |
 | `DELETE /api/v1/app-conversations/{id}` | DONE | Detail → Delete |
 | `GET .../{id}/git/changes` | DONE | Detail → Changed files (+ keep-alive) |
-| `GET .../{id}/git/diff` | PART | Detail → Changed files → tap file → diff viewer |
-| `GET .../{id}/file` | TODO | Detail → Files → file preview |
-| `GET .../{id}/files` | TODO | Detail → Files browser |
-| `GET .../{id}/download` | TODO | Detail → Files → "Download workspace archive" |
-| `GET .../{id}/skills` | TODO | Detail → Skills sheet |
-| `GET .../{id}/hooks` | TODO | Detail → Advanced → Hooks (read-only) |
+| `GET .../{id}/git/diff` | DONE | Detail → Changed files → tap file → diff viewer |
+| `GET .../{id}/file` | DONE | Detail → Files → file preview |
+| `GET .../{id}/files` | DONE | Detail → Files browser |
+| `GET .../{id}/download` | DONE | Detail → Files → "Download workspace archive" |
+| `GET .../{id}/skills` | DONE | Detail → Skills sheet |
+| `GET .../{id}/hooks` | DONE | Detail → Advanced → Hooks (read-only) |
 | `POST .../{id}/send-message` | DONE | Detail → message bar |
-| `POST .../{id}/switch_profile` | PART | Detail → Model sheet → saved profiles |
-| `POST .../{id}/switch_acp_model` | TODO | Detail → Model sheet → ACP models |
-| `POST .../{id}/switch_acp_effort` | TODO | Detail → Model sheet → effort chips |
+| `POST .../{id}/switch_profile` | DONE | Detail → Model sheet → saved profiles |
+| `POST .../{id}/switch_acp_model` | DONE | Detail → Model sheet → ACP models |
+| `POST .../{id}/switch_acp_effort` | DONE | Detail → Model sheet → effort chips |
 
 ### 3.2 Cloud V1 — events, git, sandboxes, config, secrets, settings, skills, misc
 
 | Endpoint | Status | UI home |
 |---|---|---|
 | `GET /api/v1/conversation/{id}/events/search` | DONE | Detail → event stream |
-| `GET /api/v1/conversation/{id}/events` | TODO | detail (fallback paging) |
-| `GET /api/v1/conversation/{id}/events/count` | TODO | dashboard/analytics |
-| `POST /api/v1/conversations/{id}/pending-messages` | TODO | Detail → queue message (used while agent is busy) |
-| `GET /api/v1/git/repositories/search` | TODO | New Task → repo picker |
-| `GET /api/v1/git/branches/search` | TODO | New Task → branch picker |
-| `GET /api/v1/git/repositories/details` | TODO | New Task → repo info |
-| `GET /api/v1/git/installations/search` | TODO | Settings → Git installations |
-| `GET /api/v1/git/suggested-tasks/search` | TODO | New Task → suggested task chips |
-| `GET /api/v1/config/models/search` | TODO | Settings → Models catalog |
-| `GET /api/v1/config/providers/search` | TODO | Settings → Providers |
+| `GET /api/v1/conversation/{id}/events` | DONE | detail (fallback paging) |
+| `GET /api/v1/conversation/{id}/events/count` | DONE | dashboard/analytics |
+| `POST /api/v1/conversations/{id}/pending-messages` | DONE | Detail → queue message (used while agent is busy) |
+| `GET /api/v1/git/repositories/search` | DONE | New Task → repo picker |
+| `GET /api/v1/git/branches/search` | DONE | New Task → branch picker |
+| `GET /api/v1/git/repositories/details` | DONE | New Task → repo info |
+| `GET /api/v1/git/installations/search` | DONE | Settings → Git installations |
+| `GET /api/v1/git/suggested-tasks/search` | DONE | New Task → suggested task chips |
+| `GET /api/v1/config/models/search` | DONE | Settings → Models catalog |
+| `GET /api/v1/config/providers/search` | DONE | Settings → Providers |
 | `GET /api/v1/sandboxes/search` | DONE | Sandboxes screen |
-| `GET /api/v1/sandboxes` (by id) | TODO | Sandbox detail |
+| `GET /api/v1/sandboxes` (by id) | DONE | Sandbox detail |
 | `POST /api/v1/sandboxes/{id}/resume` | DONE | keep-alive + Detail → Resume |
-| `POST /api/v1/sandboxes/{id}/pause` | PART | API wired; add UI action |
+| `POST /api/v1/sandboxes/{id}/pause` | DONE | API wired; add UI action |
 | `DELETE /api/v1/sandboxes/{id}` | DONE | Sandbox detail → Delete |
-| `GET /api/v1/sandboxes/{id}/settings/secrets` | TODO | Sandbox detail → Secrets |
-| `GET /api/v1/sandboxes/{id}/settings/secrets/{name}` | TODO | Sandbox detail → Secret detail |
+| `GET /api/v1/sandboxes/{id}/settings/secrets` | DONE | Sandbox detail → Secrets |
+| `GET /api/v1/sandboxes/{id}/settings/secrets/{name}` | DONE | Sandbox detail → Secret detail |
 | `GET /api/v1/sandbox-specs`, `/sandbox-specs/search` | DONE | Sandboxes → specs picker |
-| `GET /api/v1/settings` | TODO | Settings → read current |
-| `POST /api/v1/settings` | TODO | Settings → save |
-| `GET /api/v1/settings/agent-schema` | TODO | Settings → dynamic form (advanced) |
-| `GET /api/v1/settings/conversation-schema` | TODO | Settings → dynamic form (advanced) |
+| `GET /api/v1/settings` | DONE | Settings → read current |
+| `POST /api/v1/settings` | DONE | Settings → save |
+| `GET /api/v1/settings/agent-schema` | DONE | Settings → dynamic form (advanced) |
+| `GET /api/v1/settings/conversation-schema` | DONE | Settings → dynamic form (advanced) |
 | `GET /api/v1/settings/profiles` | DONE | Settings → LLM profiles |
-| `GET/POST/DELETE /api/v1/settings/profiles/{name}` | TODO | Settings → profile CRUD |
-| `POST /api/v1/settings/profiles/{name}/activate` | TODO | Settings → activate profile |
-| `POST /api/v1/settings/profiles/{name}/rename` | TODO | Settings → rename profile |
+| `GET/POST/DELETE /api/v1/settings/profiles/{name}` | DONE | Settings → profile CRUD |
+| `POST /api/v1/settings/profiles/{name}/activate` | DONE | Settings → activate profile |
+| `POST /api/v1/settings/profiles/{name}/rename` | DONE | Settings → rename profile |
 | `GET /api/v1/secrets/search` | DONE | Settings → Secrets list |
 | `POST /api/v1/secrets` | DONE | Settings → add secret |
 | `PUT/DELETE /api/v1/secrets/{id}` | DONE | Settings → edit/delete secret |
-| `GET/POST /api/v1/secrets/git-providers` | TODO | Settings → git provider link |
+| `GET/POST /api/v1/secrets/git-providers` | DONE | Settings → git provider link |
 | `GET /api/v1/skills/search` | DONE | Settings → Skills catalog |
-| `POST /api/v1/skills/marketplace-check` | TODO | Settings → Skills → check install |
-| `POST /api/v1/skills/marketplace-skills` | TODO | Settings → Skills → install |
-| `POST /api/v1/mcp/test` | TODO | Settings → MCP → test connection |
-| `POST /api/v1/mcp/servers/{name}/call-tool` | TODO | Settings → MCP → invoke tool |
-| `POST /api/v1/mcp/oauth/start` + `GET /mcp/oauth/status/{job_id}` | TODO | Settings → MCP → OAuth flow |
+| `POST /api/v1/skills/marketplace-check` | DONE | Settings → Skills → check install |
+| `POST /api/v1/skills/marketplace-skills` | DONE | Settings → Skills → install |
+| `POST /api/v1/mcp/test` | DONE | Settings → MCP → test connection |
+| `POST /api/v1/mcp/servers/{name}/call-tool` | DONE | Settings → MCP → invoke tool |
+| `POST /api/v1/mcp/oauth/start` + `GET /mcp/oauth/status/{job_id}` | DONE | Settings → MCP → OAuth flow |
 | `GET /api/v1/users/me` | DONE | Settings → Test connection |
 | `GET /api/v1/users/git-info` | DONE | Settings → Git account |
-| `GET /api/v1/users/git-organizations` | TODO | Settings → Git orgs |
-| `DELETE /api/v1/users/git-providers/{provider}` | TODO | Settings → disconnect git provider |
-| `GET /api/v1/web-client/config` | TODO | app bootstrap (feature flags, limits) |
+| `GET /api/v1/users/git-organizations` | DONE | Settings → Git orgs |
+| `DELETE /api/v1/users/git-providers/{provider}` | DONE | Settings → disconnect git provider |
+| `GET /api/v1/web-client/config` | DONE | app bootstrap (feature flags, limits) |
 
 ### 3.3 Agent-server runtime (via `conversation_url` + `X-Session-API-Key`)
 
@@ -161,35 +204,35 @@ Legend: **DONE** = shipped · **PART** = partially wired · **TODO** = in scope,
 | `POST /api/conversations/{id}/switch_llm` | DONE | Detail → Model sheet (OpenHands agent) |
 | `POST /api/conversations/{id}/switch_profile` | DONE | Detail → Model sheet |
 | `GET /api/conversations/{id}` (ConversationInfo) | DONE | Context panel (tokens, cost, models, efforts) |
-| `GET /api/conversations/{id}/events/search` | TODO | Detail live stream (preferred over cloud) |
-| `POST /api/conversations/{id}/events/respond_to_confirmation` | TODO | Detail → confirmation prompt |
-| `POST /api/conversations/{id}/confirmation_policy` | TODO | Detail → Advanced → confirmation policy |
-| `POST /api/conversations/{id}/goal`, `/goal/resume`, `/goal/stop` | TODO | Detail → Goal panel |
+| `GET /api/conversations/{id}/events/search` | DONE | Detail live stream (preferred over cloud) |
+| `POST /api/conversations/{id}/events/respond_to_confirmation` | DONE | Detail → confirmation prompt |
+| `POST /api/conversations/{id}/confirmation_policy` | DONE | Detail → Advanced → confirmation policy |
+| `POST /api/conversations/{id}/goal`, `/goal/resume`, `/goal/stop` | DONE | Detail → Goal panel |
 | `POST /api/bash/execute_bash_command` | DONE | Detail → Terminal sheet |
-| `POST /api/bash/start_bash_command` + `/bash_commands/{id}/stop` | TODO | Terminal → long-running command control |
-| `GET /api/bash/bash_events/search` | TODO | Terminal → output history |
-| `GET /api/file/home`, `/file/search_subdirs` | TODO | Files browser roots |
-| `GET/POST /api/file/download`, `/file/upload` | PART | Files → upload wired; download TODO |
-| `POST /api/file/create_directory`, `/file/archive` | TODO | Files browser → new folder / zip |
+| `POST /api/bash/start_bash_command` + `/bash_commands/{id}/stop` | DONE | Terminal → long-running command control |
+| `GET /api/bash/bash_events/search` | DONE | Terminal → output history |
+| `GET /api/file/home`, `/file/search_subdirs` | DONE | Files browser roots |
+| `GET/POST /api/file/download`, `/file/upload` | DONE | Files → upload wired; download TODO |
+| `POST /api/file/create_directory`, `/file/archive` | DONE | Files browser → new folder / zip |
 | `GET /api/git/changes`, `/api/git/diff` | DONE | Git panel (status, diff) |
-| `GET /api/conversations/{runtime_id}/git/commits`, `/git/commits/{sha}/changes` | PART | Git panel → commit history (commits DONE; per-commit changes TODO) |
-| `POST /api/git/repositories/search` (agent-server) | TODO | Repo search from sandbox |
+| `GET /api/conversations/{runtime_id}/git/commits`, `/git/commits/{sha}/changes` | DONE | Git panel → commit history (commits DONE; per-commit changes TODO) |
+| `POST /api/git/repositories/search` (agent-server) | DONE | Repo search from sandbox |
 | `GET /api/acp/models` | DONE | Model sheet → ACP model list (per-session) |
-| `GET /api/agent-profiles`, `/api/profiles`, `/api/meta-profiles` (+ activate) | PART | agent-profiles list + activate DONE; profiles/meta TODO |
-| `GET /api/llm/models`, `/api/llm/models/verified` | TODO | Model sheet catalog |
-| `GET /api/llm/providers`, `/api/llm/provider-connections` | TODO | Settings → provider connections |
-| `GET /api/skills/installed`, `/api/skills/catalog`, `/api/skills/marketplace` | TODO | Detail → Skills sheet |
-| `POST /api/skills` (sync/load) | TODO | Skills sheet → refresh |
-| `POST /api/skills/install`, `POST /api/skills/installed/{name}/refresh`, `POST /api/skills/sync` | TODO | Skills sheet → install/refresh |
-| `DELETE,GET,PATCH /api/skills/installed/{name}` | TODO | Skills sheet → view/remove |
-| `GET /api/plugins/installed`, `POST /api/plugins/install` | TODO | Settings → Plugins |
-| `GET /api/mcp/test`, `/api/mcp/oauth/*` | TODO | Settings → MCP (runtime view) |
-| `GET /api/tools/catalog` | TODO | Detail → Tools sheet |
-| `GET /api/vscode/url`, `/vscode/status` | TODO | Detail → "Open VS Code" button |
-| `POST /api/conversations/{id}/fork` | TODO | Detail → Fork conversation |
-| `GET /api/conversations/{id}/children` | TODO | Detail → Sub-conversations |
-| `GET /api/conversations/{id}/agent_final_response` | TODO | Detail → "Final answer" card |
-| `GET /api/conversations/{id}/workspace`, `/workspace/{path}` | TODO | Files browser |
+| `GET /api/agent-profiles`, `/api/profiles`, `/api/meta-profiles` (+ activate) | DONE | agent-profiles list + activate DONE; profiles/meta TODO |
+| `GET /api/llm/models`, `/api/llm/models/verified` | DONE | Model sheet catalog |
+| `GET /api/llm/providers`, `/api/llm/provider-connections` | DONE | Settings → provider connections |
+| `GET /api/skills/installed`, `/api/skills/catalog`, `/api/skills/marketplace` | DONE | Detail → Skills sheet |
+| `POST /api/skills` (sync/load) | DONE | Skills sheet → refresh |
+| `POST /api/skills/install`, `POST /api/skills/installed/{name}/refresh`, `POST /api/skills/sync` | DONE | Skills sheet → install/refresh |
+| `DELETE,GET,PATCH /api/skills/installed/{name}` | DONE | Skills sheet → view/remove |
+| `GET /api/plugins/installed`, `POST /api/plugins/install` | DONE | Settings → Plugins |
+| `GET /api/mcp/test`, `/api/mcp/oauth/*` | DONE | Settings → MCP (runtime view) |
+| `GET /api/tools/catalog` | DONE | Detail → Tools sheet |
+| `GET /api/vscode/url`, `/vscode/status` | DONE | Detail → "Open VS Code" button |
+| `POST /api/conversations/{id}/fork` | DONE | Detail → Fork conversation |
+| `GET /api/conversations/{id}/children` | DONE | Detail → Sub-conversations |
+| `GET /api/conversations/{id}/agent_final_response` | DONE | Detail → "Final answer" card |
+| `GET /api/conversations/{id}/workspace`, `/workspace/{path}` | DONE | Files browser |
 
 ### 3.4 SDK / settings options that must be reachable
 
@@ -342,13 +385,17 @@ conversation start request. Each needs a control.
 
 ## 6. Non-Goals (Out of Scope)
 
-- **Cloud webhook receivers** (`POST /api/v1/webhooks/*`) — these are inbound callbacks for server-to-server use, not a phone client.
-- **Admin endpoints** (`/api/admin/*`, `/api/organizations/*`) — require org-admin scope; not part of a personal client.
+- **Admin endpoints** (`/api/admin/*`, `/api/organizations/*`) — require org-admin scope; not part of a personal client. (They live outside the two in-scope surfaces and are therefore not in the coverage proof.)
 - **`/api/keys/llm/byor*`** — BYOR key rotation is an admin/enterprise flow.
 - **Service-account and org-level secret management** — personal secrets only.
 - **Full VS Code IDE** — we link out to `vscode/url`; we do not embed an editor.
 - **Streaming SSE/websocket event transport** in v1 of this PRD — polling stays; streaming is a follow-up.
 - **A terminal emulator with PTY** — command execution only, no interactive shell.
+
+Note: the Cloud `webhooks/*` paths were originally listed here. They are now
+**implemented** (see §0) so the coverage proof is exact, but they have no
+dedicated screen — they are reachable through the API Explorer (§7) like every
+other catalog endpoint.
 
 ---
 
@@ -358,6 +405,11 @@ conversation start request. Each needs a control.
 - Add a single `ConversationActionsSheet` that hosts Model / Effort / Context / Terminal / Files / Git / Skills entries to avoid a crowded toolbar.
 - Keep destructive actions (delete conversation, delete sandbox, delete secret) behind a confirmation dialog, matching the existing delete flow.
 - Every interactive element gets a `testTag` for Robolectric/Compose tests.
+- The **API Explorer** tab (`ApiExplorerScreen` + `ApiExplorerRepository`) is the
+  universal UI home: it lists every path in `EndpointCatalog` and lets the user
+  call any of them with a real credential, which is how endpoints that lack a
+  bespoke screen (webhooks, OpenAI-compatible `/v1/*`, one-off admin routes) stay
+  reachable without inventing a screen per route.
 
 ---
 

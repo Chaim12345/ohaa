@@ -155,7 +155,7 @@ class KeepAliveRunnerTest {
 
         assertEquals(1, result.touched)
         val recorded = server.takeRequest()
-        assertEquals("/api/git/changes", recorded.path)
+        assertEquals("/api/git/changes?path=%2F", recorded.path)
         assertEquals("session-secret", recorded.getHeader("X-Session-API-Key"))
     }
 }

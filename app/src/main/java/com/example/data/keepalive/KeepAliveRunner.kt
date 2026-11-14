@@ -40,7 +40,7 @@ class KeepAliveRunner(
 
     private suspend fun touch(conversationId: String, hasRuntimeAccess: Boolean): Boolean {
         if (hasRuntimeAccess && runtimeRepository != null) {
-            val runtime = runtimeRepository.gitChanges(conversationId)
+            val runtime = runtimeRepository.touchRuntime(conversationId)
             if (runtime.isSuccess) return true
             // Fall through to the cloud proxy only if the runtime is unreachable.
         }

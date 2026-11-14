@@ -52,6 +52,7 @@ enum class AppNavTab(val label: String) {
     TASKS("Active Tasks"),
     NEW_TASK("New Agent"),
     RESOURCES("Resources"),
+    EXPLORER("API Explorer"),
     SETTINGS("Cloud API")
 }
 
@@ -130,12 +131,18 @@ data class OpenHandsUiState(
     val mcpOAuthStatus: String? = null,
     val childConversations: List<com.example.data.model.ConversationInfoDto> = emptyList(),
     val workspaceInfo: String? = null,
+    val explorerResponse: String? = null,
+    val explorerLoading: Boolean = false,
 )
 
 class OpenHandsViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getInstance(application)
     private val repository = OpenHandsRepository(application, database)
     private val runtimeRepository = AgentServerRepository(database.conversationDao())
+    private val explorerRepository = com.example.data.repository.ApiExplorerRepository()
+
+    val explorerCloudPaths: List<String> get() = explorerRepository.cloudPaths
+    val explorerAgentPaths: List<String> get() = explorerRepository.agentPaths
 
     private val _uiState = MutableStateFlow(
         OpenHandsUiState(
@@ -1364,6 +1371,41 @@ class OpenHandsViewModel(application: Application) : AndroidViewModel(applicatio
                 workspaceInfo = result.getOrNull(),
                 notificationMessage = result.exceptionOrNull()?.message
             )
+        }
+    }
+
+    /**
+     * Executes an arbitrary catalog endpoint for the API Explorer. The Cloud
+     * surface uses the configured Bearer key and base URL; the sandbox surface
+     * uses the selected conversation's runtime URL and session key.
+     */
+    fun callExplorer(surface: String, method: String, path: String, body: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(explorerLoading = true, explorerResponse = null)
+            val base: String
+            val credential: String
+            if (surface == "agent") {
+                val c = selectedConversation()
+                if (c == null || c.conversationUrl.isNullOrBlank()) {
+                    _uiState.value = _uiState.value.copy(
+                        explorerLoading = false,
+                        explorerResponse = "Select a conversation with a live sandbox first."
+                    )
+                    return@launch
+                }
+                base = c.conversationUrl
+                credential = c.sessionApiKey.orEmpty()
+            } else {
+                base = repository.baseUrl
+                credential = repository.apiKey
+            }
+            val result = explorerRepository.call(surface, method, base, credential, path, body)
+            val rendered = if (result.error != null) {
+                "Error: ${result.error}"
+            } else {
+                "${result.code} ${method.uppercase()} $path\n\n${result.body.take(4000)}"
+            }
+            _uiState.value = _uiState.value.copy(explorerLoading = false, explorerResponse = rendered)
         }
     }
 

@@ -3,6 +3,56 @@ package com.example.data.repository
 import com.example.data.api.ApiClient
 import com.example.data.api.AgentServerApiService
 import com.example.data.local.ConversationDao
+import com.example.data.model.ActivateAgentProfileDto
+import com.example.data.model.ActivateMetaProfileDto
+import com.example.data.model.ActivateProfileResponseDto
+import com.example.data.model.AddWorkspaceParentsRequest
+import com.example.data.model.AddWorkspacesRequest
+import com.example.data.model.AgentProfileDetailDto
+import com.example.data.model.AgentProfileDiagnosticsDto
+import com.example.data.model.AgentProfileMutationDto
+import com.example.data.model.AppBackendSessionDto
+import com.example.data.model.DeleteResponseDto
+import com.example.data.model.GitPullRequestStatusDto
+import com.example.data.model.GitRepositoryPageDto
+import com.example.data.model.HealthStatusDto
+import com.example.data.model.HooksRequestDto
+import com.example.data.model.HooksResponseDto
+import com.example.data.model.InitRequestDto
+import com.example.data.model.InitStatusDto
+import com.example.data.model.InstalledPluginDetailDto
+import com.example.data.model.InstalledSkillDetailDto
+import com.example.data.model.McpOAuthCallbackRequest
+import com.example.data.model.MetaProfileConfigDto
+import com.example.data.model.MetaProfileDetailDto
+import com.example.data.model.MetaProfileListDto
+import com.example.data.model.OpenAiModelListDto
+import com.example.data.model.ProfileMutationResponseDto
+import com.example.data.model.ProviderConnectionCreateRequest
+import com.example.data.model.ProviderConnectionDto
+import com.example.data.model.RenameAgentProfileRequest
+import com.example.data.model.RenameProfileRequest
+import com.example.data.model.RuntimeProfileDetailDto
+import com.example.data.model.RuntimeProfileListDto
+import com.example.data.model.RuntimeSecretItemDto
+import com.example.data.model.RuntimeSecretsListDto
+import com.example.data.model.SaveRuntimeProfileRequest
+import com.example.data.model.SecretCreateRequest
+import com.example.data.model.SendMessageRequestDto
+import com.example.data.model.SettingsSchemaDto
+import com.example.data.model.SubscriptionDevicePollRequest
+import com.example.data.model.SubscriptionDeviceStartDto
+import com.example.data.model.SubscriptionModelsDto
+import com.example.data.model.SubscriptionStatusDto
+import com.example.data.model.UpdatePluginDto
+import com.example.data.model.UpdatePluginStateDto
+import com.example.data.model.UpdatePluginStateRequest
+import com.example.data.model.UpdateSkillDto
+import com.example.data.model.UpdateSkillStateDto
+import com.example.data.model.UpdateSkillStateRequest
+import com.example.data.model.ValidateProfileResponseDto
+import com.example.data.model.VerifiedModelsDto
+import com.example.data.model.WorkspacesListDto
 import com.example.data.model.AcpModelDiscoveryDto
 import com.example.data.model.AgentFinalResponseDto
 import com.example.data.model.BashCommandDto
@@ -48,12 +98,14 @@ import com.example.data.model.ExecuteBashRequest
 import com.example.data.model.FileEntryDto
 import com.example.data.model.GitChange
 import com.example.data.model.GitCommitsPageDto
+import com.example.data.model.GitChangeDto
 import com.example.data.model.GitDiffDto
 import com.example.data.model.ServerInfoDto
 import com.example.data.model.SwitchAcpEffortRequest
 import com.example.data.model.SwitchAcpModelRequest
 import com.example.data.model.SwitchLlmRequest
 import com.example.data.model.SwitchProfileRequest
+import com.example.data.model.StartConversationRequest
 import com.example.data.model.SuccessResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -605,10 +657,10 @@ class AgentServerRepository(
                 .map { Unit }
         }
 
-    suspend fun testMcp(conversationId: String, server: String): Result<Unit> =
+    suspend fun testMcp(conversationId: String, server: Map<String, Any>, name: String? = null): Result<Unit> =
         withContext(Dispatchers.IO) {
             val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
-            call { t.service.testMcp(endpoint(t.baseUrl, "/api/mcp/test"), McpTestRequest(server = server)) }
+            call { t.service.testMcp(endpoint(t.baseUrl, "/api/mcp/test"), McpTestRequest(name = name, server = server)) }
                 .map { Unit }
         }
 
@@ -670,5 +722,680 @@ class AgentServerRepository(
         withContext(Dispatchers.IO) {
             val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
             call { t.service.createDirectory(endpoint(t.baseUrl, "/api/file/create_directory"), path) }
+        }
+
+    // ---- health / init / hooks --------------------------------------------
+
+    suspend fun health(conversationId: String): Result<HealthStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getHealth(endpoint(t.baseUrl, "/health")) }
+    }
+
+    suspend fun ready(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getReady(endpoint(t.baseUrl, "/ready")) }.map { Unit }
+    }
+
+    suspend fun rootServerInfo(conversationId: String): Result<ServerInfoDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getServerInfo(endpoint(t.baseUrl, "/")) }
+    }
+
+    suspend fun alive(conversationId: String): Result<HealthStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getHealth(endpoint(t.baseUrl, "/alive")) }
+    }
+
+    suspend fun initStatus(conversationId: String): Result<InitStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getInitStatus(endpoint(t.baseUrl, "/api/init")) }
+    }
+
+    suspend fun init(conversationId: String, request: InitRequestDto): Result<InitStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.init(endpoint(t.baseUrl, "/api/init"), request) }
+        }
+
+    suspend fun hooks(conversationId: String): Result<HooksResponseDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getHooks(endpoint(t.baseUrl, "/api/hooks"), HooksRequestDto()) }
+    }
+
+    // ---- conversations (bare) ---------------------------------------------
+
+    suspend fun agentConversations(conversationId: String): Result<List<ConversationInfoDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.listConversations(endpoint(t.baseUrl, "/api/conversations")) }
+        }
+
+    suspend fun agentConversationCount(conversationId: String): Result<Int> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.countConversations(endpoint(t.baseUrl, "/api/conversations/count")) }
+    }
+
+    suspend fun searchAgentConversations(conversationId: String): Result<List<ConversationInfoDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.searchConversations(endpoint(t.baseUrl, "/api/conversations/search")) }
+                .map { it.items.orEmpty() }
+        }
+
+    suspend fun startAgentConversation(conversationId: String, request: StartConversationRequest): Result<ConversationInfoDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.startConversation(endpoint(t.baseUrl, "/api/conversations"), request) }
+        }
+
+    suspend fun sendConversationMessage(conversationId: String, request: SendMessageRequestDto): Result<SuccessResponse> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.sendMessage(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/events"),
+                    request
+                )
+            }
+        }
+
+    // ---- events ------------------------------------------------------------
+
+    suspend fun conversationEvents(conversationId: String): Result<List<Map<String, Any>>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getConversationEvents(endpoint(t.baseUrl, "/api/conversations/$conversationId/events")) }
+        }
+
+    suspend fun conversationEventCount(conversationId: String): Result<Int> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.countConversationEvents(endpoint(t.baseUrl, "/api/conversations/$conversationId/events/count")) }
+    }
+
+    suspend fun searchConversationEvents(conversationId: String): Result<String> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call {
+            t.service.searchConversationEvents(
+                endpoint(t.baseUrl, "/api/conversations/$conversationId/events/search")
+            )
+        }.map { it.string() }
+    }
+
+    suspend fun conversationEvent(conversationId: String, eventId: String): Result<Map<String, Any>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getConversationEvent(endpoint(t.baseUrl, "/api/conversations/$conversationId/events/$eventId")) }
+        }
+
+    // ---- bash (conversation-prefixed aliases) ------------------------------
+
+    suspend fun executeBashInConversation(conversationId: String, command: String): Result<BashOutputDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.executeBashConversation(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/execute_bash_command"),
+                    ExecuteBashRequest(command = command)
+                )
+            }
+        }
+
+    suspend fun startBashInConversation(conversationId: String, command: String): Result<BashCommandDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.startBashConversation(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/start_bash_command"),
+                    ExecuteBashRequest(command = command)
+                )
+            }
+        }
+
+    suspend fun clearConversationBashEvents(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.clearConversationBashEvents(endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/bash_events")) }
+            .map { Unit }
+    }
+
+    suspend fun listConversationBashEvents(conversationId: String): Result<List<Map<String, Any>>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.listConversationBashEvents(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/bash_events/")
+                )
+            }
+        }
+
+    suspend fun searchConversationBashEvents(conversationId: String): Result<BashEventPageDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.searchConversationBashEvents(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/bash_events/search")
+                )
+            }
+        }
+
+    suspend fun conversationBashEvent(conversationId: String, eventId: String): Result<BashEventDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getConversationBashEvent(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/bash_events/$eventId")
+                )
+            }
+        }
+
+    suspend fun stopConversationBashCommand(conversationId: String, commandId: String): Result<SuccessResponse> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.stopBashCommand(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/bash/bash_commands/$commandId/stop")
+                )
+            }
+        }
+
+    // ---- git (bare + commits) ---------------------------------------------
+
+    suspend fun bareGitChanges(conversationId: String, path: String? = null): Result<List<GitChangeDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getBareGitChanges(endpoint(t.baseUrl, "/api/git/changes"), path = path) }
+        }
+
+    /**
+     * Resets the sandbox idle timer with the cheapest real runtime call.
+     *
+     * Verified against a live sandbox: `GET /api/git/changes?path=/` returns 200
+     * and resets `idle_time` to 0, whereas an invalid request (422) or a
+     * DB-backed cloud call does not. `path=/` is accepted regardless of the
+     * conversation's working directory.
+     */
+    suspend fun touchRuntime(conversationId: String): Result<Unit> =
+        bareGitChanges(conversationId, path = "/").map { Unit }
+
+    suspend fun bareGitCommits(conversationId: String): Result<GitCommitsPageDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareGitCommits(endpoint(t.baseUrl, "/api/git/commits")) }
+    }
+
+    suspend fun bareGitDiff(conversationId: String): Result<GitDiffDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareGitDiff(endpoint(t.baseUrl, "/api/git/diff")) }
+    }
+
+    suspend fun gitCommitChanges(conversationId: String, sha: String): Result<List<GitChangeDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getGitCommitChanges(endpoint(t.baseUrl, "/api/git/commits/$sha/changes")) }
+        }
+
+    suspend fun conversationGitCommitChanges(conversationId: String, sha: String): Result<List<GitChangeDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getGitCommitChanges(
+                    endpoint(t.baseUrl, "/api/conversations/$conversationId/git/commits/$sha/changes")
+                )
+            }
+        }
+
+    suspend fun searchGitRepositories(conversationId: String): Result<GitRepositoryPageDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.searchGitRepositories(endpoint(t.baseUrl, "/api/git/repositories/search")) }
+        }
+
+    suspend fun pullRequestStatus(conversationId: String, owner: String, repo: String, number: Int): Result<GitPullRequestStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getPullRequest(
+                    endpoint(t.baseUrl, "/api/git/repositories/$owner/$repo/pull-requests/$number")
+                )
+            }
+        }
+
+    // ---- vscode (bare) -----------------------------------------------------
+
+    suspend fun bareVSCodeUrl(conversationId: String): Result<VSCodeUrlDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareVSCodeUrl(endpoint(t.baseUrl, "/api/vscode/url")) }
+    }
+
+    suspend fun bareVSCodeStatus(conversationId: String): Result<Map<String, Any>> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareVSCodeStatus(endpoint(t.baseUrl, "/api/vscode/status")) }
+    }
+
+    suspend fun conversationVSCodeUrl(conversationId: String): Result<VSCodeUrlDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareVSCodeUrl(endpoint(t.baseUrl, "/api/conversations/$conversationId/vscode/url")) }
+    }
+
+    suspend fun conversationVSCodeStatus(conversationId: String): Result<Map<String, Any>> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareVSCodeStatus(endpoint(t.baseUrl, "/api/conversations/$conversationId/vscode/status")) }
+    }
+
+    suspend fun conversationWorkspaceFile(conversationId: String, filePath: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.getWorkspace(endpoint(t.baseUrl, "/api/conversations/$conversationId/workspace/$filePath"))
+            }.map { it.string() }
+        }
+
+    // ---- workspaces --------------------------------------------------------
+
+    suspend fun workspaces(conversationId: String): Result<WorkspacesListDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listWorkspaces(endpoint(t.baseUrl, "/api/workspaces")) }
+    }
+
+    suspend fun addWorkspaces(conversationId: String, paths: List<String>): Result<WorkspacesListDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.addWorkspaces(endpoint(t.baseUrl, "/api/workspaces"), AddWorkspacesRequest(paths)) }
+        }
+
+    suspend fun deleteWorkspaces(conversationId: String): Result<DeleteResponseDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.deleteWorkspaces(endpoint(t.baseUrl, "/api/workspaces")) }
+    }
+
+    suspend fun addWorkspaceParents(conversationId: String, parents: List<String>): Result<WorkspacesListDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.addWorkspaceParents(
+                    endpoint(t.baseUrl, "/api/workspaces/parents"),
+                    AddWorkspaceParentsRequest(parents)
+                )
+            }
+        }
+
+    suspend fun deleteWorkspaceParents(conversationId: String): Result<DeleteResponseDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.deleteWorkspaceParents(endpoint(t.baseUrl, "/api/workspaces/parents")) }
+    }
+
+    // ---- profiles (LLM) ----------------------------------------------------
+
+    suspend fun runtimeProfiles(conversationId: String): Result<RuntimeProfileListDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listRuntimeProfiles(endpoint(t.baseUrl, "/api/profiles")) }
+    }
+
+    suspend fun runtimeProfile(conversationId: String, name: String): Result<RuntimeProfileDetailDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getRuntimeProfile(endpoint(t.baseUrl, "/api/profiles/$name")) }
+        }
+
+    suspend fun saveRuntimeProfile(conversationId: String, name: String, llm: Map<String, Any>): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.saveRuntimeProfile(
+                    endpoint(t.baseUrl, "/api/profiles/$name"),
+                    SaveRuntimeProfileRequest(llm)
+                )
+            }.map { Unit }
+        }
+
+    suspend fun deleteRuntimeProfile(conversationId: String, name: String): Result<ProfileMutationResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.deleteRuntimeProfile(endpoint(t.baseUrl, "/api/profiles/$name")) }
+        }
+
+    suspend fun activateRuntimeProfile(conversationId: String, name: String): Result<ActivateProfileResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.activateRuntimeProfile(endpoint(t.baseUrl, "/api/profiles/$name/activate")) }
+        }
+
+    suspend fun renameRuntimeProfile(conversationId: String, name: String, newName: String): Result<ProfileMutationResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.renameRuntimeProfile(
+                    endpoint(t.baseUrl, "/api/profiles/$name/rename"),
+                    RenameProfileRequest(newName)
+                )
+            }
+        }
+
+    suspend fun validateRuntimeProfile(conversationId: String, name: String, llm: Map<String, Any>): Result<ValidateProfileResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.validateRuntimeProfile(
+                    endpoint(t.baseUrl, "/api/profiles/$name/validate"),
+                    SaveRuntimeProfileRequest(llm)
+                )
+            }
+        }
+
+    // ---- agent profiles ----------------------------------------------------
+
+    suspend fun agentProfilesDetailed(conversationId: String): Result<String> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listAgentProfilesDetailed(endpoint(t.baseUrl, "/api/agent-profiles")) }.map { it.string() }
+    }
+
+    suspend fun agentProfile(conversationId: String, name: String): Result<AgentProfileDetailDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getAgentProfile(endpoint(t.baseUrl, "/api/agent-profiles/$name")) }
+        }
+
+    suspend fun saveAgentProfile(conversationId: String, name: String, profile: Map<String, Any>): Result<AgentProfileMutationDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.saveAgentProfile(endpoint(t.baseUrl, "/api/agent-profiles/$name"), profile) }
+        }
+
+    suspend fun deleteAgentProfile(conversationId: String, name: String): Result<AgentProfileMutationDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.deleteAgentProfile(endpoint(t.baseUrl, "/api/agent-profiles/$name")) }
+        }
+
+    suspend fun materializeAgentProfile(conversationId: String, name: String): Result<AgentProfileDiagnosticsDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.materializeAgentProfile(endpoint(t.baseUrl, "/api/agent-profiles/$name/materialize")) }
+        }
+
+    suspend fun renameAgentProfile(conversationId: String, name: String, newName: String): Result<AgentProfileMutationDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.renameAgentProfile(
+                    endpoint(t.baseUrl, "/api/agent-profiles/$name/rename"),
+                    RenameAgentProfileRequest(newName)
+                )
+            }
+        }
+
+    suspend fun activateAgentProfileDetailed(conversationId: String, profileId: String): Result<ActivateAgentProfileDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.activateAgentProfileDetailed(endpoint(t.baseUrl, "/api/agent-profiles/$profileId/activate")) }
+        }
+
+    // ---- meta profiles -----------------------------------------------------
+
+    suspend fun metaProfiles(conversationId: String): Result<MetaProfileListDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listMetaProfiles(endpoint(t.baseUrl, "/api/meta-profiles")) }
+    }
+
+    suspend fun metaProfile(conversationId: String, name: String): Result<MetaProfileDetailDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getMetaProfile(endpoint(t.baseUrl, "/api/meta-profiles/$name")) }
+        }
+
+    suspend fun saveMetaProfile(conversationId: String, name: String, config: MetaProfileConfigDto): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.saveMetaProfile(endpoint(t.baseUrl, "/api/meta-profiles/$name"), config) }.map { Unit }
+        }
+
+    suspend fun deleteMetaProfile(conversationId: String, name: String): Result<ProfileMutationResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.deleteMetaProfile(endpoint(t.baseUrl, "/api/meta-profiles/$name")) }
+        }
+
+    suspend fun activateMetaProfile(conversationId: String, name: String): Result<ActivateMetaProfileDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.activateMetaProfile(endpoint(t.baseUrl, "/api/meta-profiles/$name/activate")) }
+        }
+
+    // ---- plugins / skills (installed-item operations) ----------------------
+
+    suspend fun installedPlugin(conversationId: String, name: String): Result<InstalledPluginDetailDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getInstalledPlugin(endpoint(t.baseUrl, "/api/plugins/installed/$name")) }
+        }
+
+    suspend fun setPluginEnabled(conversationId: String, name: String, enabled: Boolean): Result<UpdatePluginStateDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.updatePluginState(
+                    endpoint(t.baseUrl, "/api/plugins/installed/$name"),
+                    UpdatePluginStateRequest(enabled)
+                )
+            }
+        }
+
+    suspend fun uninstallPlugin(conversationId: String, name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.uninstallPlugin(endpoint(t.baseUrl, "/api/plugins/installed/$name")) }.map { Unit }
+    }
+
+    suspend fun refreshPlugin(conversationId: String, name: String): Result<UpdatePluginDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.refreshPlugin(endpoint(t.baseUrl, "/api/plugins/installed/$name/refresh")) }
+        }
+
+    suspend fun pluginMarketplace(conversationId: String): Result<String> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getPluginMarketplace(endpoint(t.baseUrl, "/api/plugins/marketplace")) }.map { it.string() }
+    }
+
+    suspend fun installedSkill(conversationId: String, name: String): Result<InstalledSkillDetailDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getInstalledSkill(endpoint(t.baseUrl, "/api/skills/installed/$name")) }
+        }
+
+    suspend fun setSkillEnabled(conversationId: String, name: String, enabled: Boolean): Result<UpdateSkillStateDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.updateSkillState(
+                    endpoint(t.baseUrl, "/api/skills/installed/$name"),
+                    UpdateSkillStateRequest(enabled)
+                )
+            }
+        }
+
+    suspend fun uninstallSkill(conversationId: String, name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.uninstallSkill(endpoint(t.baseUrl, "/api/skills/installed/$name")) }.map { Unit }
+    }
+
+    suspend fun refreshSkill(conversationId: String, name: String): Result<UpdateSkillDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.refreshSkill(endpoint(t.baseUrl, "/api/skills/installed/$name/refresh")) }
+        }
+
+    // ---- settings schemas + secrets ----------------------------------------
+
+    suspend fun agentSettingsSchema(conversationId: String): Result<SettingsSchemaDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getAgentSettingsSchema(endpoint(t.baseUrl, "/api/settings/agent-schema")) }
+    }
+
+    suspend fun conversationSettingsSchema(conversationId: String): Result<SettingsSchemaDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.getConversationSettingsSchema(endpoint(t.baseUrl, "/api/settings/conversation-schema")) }
+        }
+
+    suspend fun runtimeSecrets(conversationId: String): Result<RuntimeSecretsListDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listRuntimeSecrets(endpoint(t.baseUrl, "/api/settings/secrets")) }
+    }
+
+    suspend fun createRuntimeSecret(conversationId: String, name: String, value: String, description: String? = null): Result<RuntimeSecretItemDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.createRuntimeSecret(
+                    endpoint(t.baseUrl, "/api/settings/secrets"),
+                    SecretCreateRequest(name, value, description)
+                )
+            }
+        }
+
+    suspend fun runtimeSecret(conversationId: String, name: String): Result<String> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getRuntimeSecret(endpoint(t.baseUrl, "/api/settings/secrets/$name")) }.map { it.string() }
+    }
+
+    suspend fun deleteRuntimeSecret(conversationId: String, name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.deleteRuntimeSecret(endpoint(t.baseUrl, "/api/settings/secrets/$name")) }.map { Unit }
+    }
+
+    // ---- tools (bare) ------------------------------------------------------
+
+    suspend fun bareToolCatalog(conversationId: String): Result<List<String>> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getBareToolCatalog(endpoint(t.baseUrl, "/api/tools/")) }
+    }
+
+    // ---- llm provider connections ------------------------------------------
+
+    suspend fun providerConnections(conversationId: String): Result<List<ProviderConnectionDto>> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.listProviderConnections(endpoint(t.baseUrl, "/api/llm/provider-connections")) }
+        }
+
+    suspend fun createProviderConnection(conversationId: String, request: ProviderConnectionCreateRequest): Result<ProviderConnectionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.createProviderConnection(endpoint(t.baseUrl, "/api/llm/provider-connections"), request) }
+        }
+
+    suspend fun updateProviderConnection(conversationId: String, id: String, request: ProviderConnectionCreateRequest): Result<ProviderConnectionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.updateProviderConnection(
+                    endpoint(t.baseUrl, "/api/llm/provider-connections/$id"),
+                    request
+                )
+            }
+        }
+
+    suspend fun deleteProviderConnection(conversationId: String, id: String): Result<ProviderConnectionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.deleteProviderConnection(endpoint(t.baseUrl, "/api/llm/provider-connections/$id")) }
+        }
+
+    suspend fun verifiedModels(conversationId: String): Result<VerifiedModelsDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getVerifiedModels(endpoint(t.baseUrl, "/api/llm/models/verified")) }
+    }
+
+    // ---- OpenAI subscription -----------------------------------------------
+
+    suspend fun subscriptionStatus(conversationId: String): Result<SubscriptionStatusDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getSubscriptionStatus(endpoint(t.baseUrl, "/api/llm/subscription/openai/status")) }
+    }
+
+    suspend fun startSubscriptionDevice(conversationId: String): Result<SubscriptionDeviceStartDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.startSubscriptionDevice(endpoint(t.baseUrl, "/api/llm/subscription/openai/device/start")) }
+        }
+
+    suspend fun pollSubscriptionDevice(conversationId: String, deviceCode: String): Result<SubscriptionStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.pollSubscriptionDevice(
+                    endpoint(t.baseUrl, "/api/llm/subscription/openai/device/poll"),
+                    SubscriptionDevicePollRequest(deviceCode)
+                )
+            }
+        }
+
+    suspend fun logoutSubscription(conversationId: String): Result<SubscriptionStatusDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.logoutSubscription(endpoint(t.baseUrl, "/api/llm/subscription/openai/logout")) }
+        }
+
+    suspend fun subscriptionModels(conversationId: String): Result<SubscriptionModelsDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.getSubscriptionModels(endpoint(t.baseUrl, "/api/llm/subscription/openai/models")) }
+    }
+
+    // ---- mcp oauth callback ------------------------------------------------
+
+    suspend fun mcpOAuthCallback(conversationId: String, callbackUrl: String): Result<McpOAuthStatusResponseDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call {
+                t.service.mcpOAuthCallback(
+                    endpoint(t.baseUrl, "/api/mcp/oauth/callback/$callbackUrl"),
+                    McpOAuthCallbackRequest(callbackUrl)
+                )
+            }
+        }
+
+    // ---- canvas extension app backends -------------------------------------
+
+    suspend fun createAppBackendSession(conversationId: String, extensionName: String): Result<AppBackendSessionDto> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.createAppBackendSession(endpoint(t.baseUrl, "/app-backends/$extensionName/session")) }
+        }
+
+    suspend fun deleteAppBackendSession(conversationId: String, extensionName: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.deleteAppBackendSession(endpoint(t.baseUrl, "/app-backends/$extensionName/session")) }
+                .map { Unit }
+        }
+
+    // ---- auth workspace session --------------------------------------------
+
+    suspend fun createWorkspaceSession(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.createWorkspaceSession(endpoint(t.baseUrl, "/api/auth/workspace-session")) }.map { Unit }
+    }
+
+    suspend fun deleteWorkspaceSession(conversationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.deleteWorkspaceSession(endpoint(t.baseUrl, "/api/auth/workspace-session")) }.map { Unit }
+    }
+
+    // ---- OpenAI-compatible surface -----------------------------------------
+
+    suspend fun openAiModels(conversationId: String): Result<OpenAiModelListDto> = withContext(Dispatchers.IO) {
+        val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+        call { t.service.listOpenAiModels(endpoint(t.baseUrl, "/v1/models")) }
+    }
+
+    suspend fun openAiChatCompletions(conversationId: String, body: Map<String, Any>): Result<String> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.openAiChatCompletions(endpoint(t.baseUrl, "/v1/chat/completions"), body) }
+                .map { it.string() }
+        }
+
+    suspend fun openAiResponses(conversationId: String, body: Map<String, Any>): Result<String> =
+        withContext(Dispatchers.IO) {
+            val t = target(conversationId).getOrElse { return@withContext Result.failure(it) }
+            call { t.service.openAiResponses(endpoint(t.baseUrl, "/v1/responses"), body) }.map { it.string() }
         }
 }

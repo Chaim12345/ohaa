@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Api
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
@@ -40,6 +41,7 @@ import com.example.ui.screens.RuntimeSkillsSheet
 import com.example.ui.screens.SubConversationSheet
 import com.example.ui.screens.ToolsSheet
 import com.example.ui.screens.VSCodeSheet
+import com.example.ui.screens.ApiExplorerScreen
 import com.example.ui.screens.ConversationDetailScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.FilesSheet
@@ -103,6 +105,7 @@ fun OpenHandsApp(
                 Triple(AppNavTab.TASKS, Icons.AutoMirrored.Filled.FormatListBulleted, "Tasks"),
                 Triple(AppNavTab.NEW_TASK, Icons.Default.AddCircle, "New Task"),
                 Triple(AppNavTab.RESOURCES, Icons.Default.Folder, "Resources"),
+                Triple(AppNavTab.EXPLORER, Icons.Default.Api, "API"),
                 Triple(AppNavTab.SETTINGS, Icons.Default.Cloud, "Cloud API")
             )
 
@@ -390,6 +393,17 @@ fun OpenHandsApp(
                 onActivateProfile = { viewModel.activateCloudProfile(it) },
                 onSaveProfile = { name, model, base -> viewModel.saveProfile(name, model, base) },
                 onLoadProfiles = { viewModel.loadProfiles() }
+            )
+          }
+          AppNavTab.EXPLORER -> {
+            ApiExplorerScreen(
+                cloudPaths = viewModel.explorerCloudPaths,
+                agentPaths = viewModel.explorerAgentPaths,
+                response = uiState.explorerResponse,
+                isLoading = uiState.explorerLoading,
+                onCall = { surface, method, path, body ->
+                  viewModel.callExplorer(surface, method, path, body)
+                }
             )
           }
           AppNavTab.SETTINGS -> {

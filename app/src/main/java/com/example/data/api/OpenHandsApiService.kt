@@ -47,6 +47,7 @@ import com.example.data.model.SendMessagePayload
 import com.example.data.model.SkillPageResponse
 import com.example.data.model.StartConversationRequest
 import com.example.data.model.StartTaskResponse
+import com.example.data.model.StartChildConversationRequest
 import com.example.data.model.SuccessResponse
 import com.example.data.model.SuggestedTaskPageResponse
 import com.example.data.model.SwitchAcpEffortRequest
@@ -479,4 +480,42 @@ interface OpenHandsApiService {
 
     @GET("api/v1/web-client/config")
     suspend fun getWebClientConfig(): Response<WebClientConfigDto>
+
+    // ---- webhooks (server-to-server callbacks) -----------------------------
+
+    /**
+     * Conversation lifecycle callback. Cloud calls this when a conversation
+     * starts, pauses, resumes or is deleted. Exposed for completeness/parity so
+     * the app can drive the same surface when it acts as a sandbox host.
+     */
+    @POST("api/v1/webhooks/conversations")
+    suspend fun webhookConversationUpdate(
+        @Body body: Map<String, Any>
+    ): Response<SuccessResponse>
+
+    /** Starts a child of [conversationId] on behalf of the calling sandbox. */
+    @POST("api/v1/webhooks/conversations/{conversation_id}/children")
+    suspend fun webhookStartChildConversation(
+        @Path("conversation_id") conversationId: String,
+        @Body body: StartChildConversationRequest
+    ): Response<Map<String, Any>>
+
+    /** Receives the runtime event stream for a conversation. */
+    @POST("api/v1/webhooks/events/{conversation_id}")
+    suspend fun webhookConversationEvents(
+        @Path("conversation_id") conversationId: String,
+        @Body body: List<Map<String, Any>>
+    ): Response<SuccessResponse>
+
+    /** Persists MCP OAuth tokens refreshed inside a sandbox. */
+    @POST("api/v1/webhooks/mcp-oauth-state")
+    suspend fun webhookMcpOAuthState(
+        @Body body: Map<String, Any>
+    ): Response<SuccessResponse>
+
+    /** Resolves a user secret from an access token (secret-lookup service). */
+    @GET("api/v1/webhooks/secrets")
+    suspend fun webhookGetSecret(
+        @Query("access_token") accessToken: String? = null,
+    ): Response<ResponseBody>
 }
