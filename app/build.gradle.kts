@@ -82,6 +82,7 @@ secrets {
   // (`String X = ;`) into BuildConfig when no key is configured (e.g. CI
   // without OPENHANDS_API_KEY).
   ignoreList.add("OPENHANDS_API_KEY")
+  ignoreList.add("OPENHANDS_TEST_CONVERSATION_ID")
 }
 
 // Some unused dependencies are commented out below instead of being removed.
