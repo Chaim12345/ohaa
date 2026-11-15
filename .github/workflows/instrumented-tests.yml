@@ -49,14 +49,23 @@ jobs:
           retention-days: 14
 
   instrumented-tests:
-    name: Instrumented UI tests (API ${{ matrix.api-level }})
-    runs-on: ubuntu-latest
+    name: Instrumented UI tests (API ${{ matrix.api-level }} ${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
-        api-level: [ 30 ]
-        target: [ default ]
-        arch: [ x86_64 ]
+        # x86_64 under KVM is the fast path for every commit. The arm64 leg
+        # runs the arm64-v8a system image on a native arm64 runner (no QEMU,
+        # no x86 emulation) — see docs/ci-runners.md. On an x86_64 host the
+        # same arm64 image would fall back to QEMU (10-30x slower), which is
+        # why we pin the arm64 leg to the arm64 runner label above.
+        include:
+          - api-level: 30
+            target: default
+            arch: x86_64
+          - api-level: 30
+            target: default
+            arch: arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -80,7 +89,10 @@ jobs:
           chmod 600 .env
 
       # KVM must be readable for the emulator to use hardware acceleration.
+      # Only needed on x86_64; the arm64 runner has no /dev/kvm and the arm64
+      # image doesn't need it.
       - name: Enable KVM
+        if: matrix.arch == 'x86_64'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
