@@ -48,7 +48,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,11 +61,9 @@ import com.example.ui.components.StatMetricCard
 import com.example.ui.components.StatusBadge
 import com.example.ui.formatRelativeTime
 import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
-import com.example.ui.theme.StatusReady
-import com.example.ui.theme.StatusWorking
+import com.example.ui.theme.StatusColors
 
 @Composable
 fun DashboardScreen(
@@ -131,7 +128,7 @@ fun DashboardScreen(
                     ) {
                         if (isLoading || isRefreshing) {
                             CircularProgressIndicator(
-                                color = OpenHandsPrimaryDark,
+                                color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp,
                                 modifier = Modifier
                                     .size(18.dp)
@@ -159,67 +156,38 @@ fun DashboardScreen(
             }
         }
 
-        // Hero Image Banner
+        // Status header (plain, no hero art)
         item {
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("hero_banner_card")
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_openhands_banner),
-                        contentDescription = "OpenHands Cloud Control Center",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color(0xEE0D1117)
-                                    )
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(14.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (connectionHealthy == true) StatusReady else StatusWorking)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = connectionStatus ?: "Cloud API V1: Ready",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (connectionHealthy == true) StatusColors.ready else StatusColors.working)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Autonomous Coding Sandbox",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            text = connectionStatus ?: "Cloud API V1: Ready",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
                         )
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Autonomous Coding Sandbox",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -228,9 +196,9 @@ fun DashboardScreen(
         item {
             Button(
                 onClick = onStartNewTask,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = OpenHandsPrimaryDark
+                    containerColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -275,13 +243,14 @@ fun DashboardScreen(
                     value = readyCount.toString(),
                     subtitle = "Awaiting Instruction",
                     icon = Icons.Default.Memory,
-                    accentColor = OpenHandsPrimaryDark,
+                    accentColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
             }
         }
 
-        // Template Presets
+        // Template Presets (hidden when empty)
+        if (templates.isNotEmpty()) {
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -310,12 +279,12 @@ fun DashboardScreen(
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Surface(
-                                    color = OpenHandsPrimaryDark.copy(alpha = 0.15f),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        text = template.category.uppercase(),
-                                        color = OpenHandsPrimaryDark,
+                                        text = template.category,
+                                        color = MaterialTheme.colorScheme.primary,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
@@ -343,6 +312,7 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
         }
 
         // Recent Tasks
@@ -456,7 +426,7 @@ fun DashboardScreen(
                                 Icon(
                                     imageVector = Icons.Default.Code,
                                     contentDescription = null,
-                                    tint = OpenHandsPrimaryDark,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -464,7 +434,7 @@ fun DashboardScreen(
                                     text = conv.repository,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = OpenHandsPrimaryDark
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
