@@ -117,7 +117,14 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
+          script: |
+            ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
+            # The emulator is still up here — pull the screenshots before the
+            # runner tears it down.
+            mkdir -p ./screenshots
+            SRC=$(adb shell 'echo ${EXTERNAL_STORAGE:-/sdcard}/Android/data/com.example/files/screenshots')
+            adb pull "$SRC" ./screenshots 2>/dev/null || echo "WARN: no screenshots pulled"
+            ls -la ./screenshots/screenshots 2>/dev/null || ls -la ./screenshots 2>/dev/null || true
 
       - name: Upload instrumented test report
         if: always()
@@ -127,16 +134,6 @@ jobs:
           path: app/build/reports/androidTests/connected
           if-no-files-found: ignore
           retention-days: 14
-
-      - name: Pull screenshots from emulator
-        if: always()
-        run: |
-          mkdir -p ./screenshots
-          # The app writes PNGs to its external files dir on the emulator.
-          adb pull /sdcard/Android/data/com.example/files/screenshots ./screenshots 2>/dev/null \
-            || adb pull "$(adb shell 'echo $EXTERNAL_STORAGE')/Android/data/com.example/files/screenshots" ./screenshots 2>/dev/null \
-            || echo "WARN: no screenshots pulled"
-          ls -la ./screenshots/screenshots 2>/dev/null || ls -la ./screenshots 2>/dev/null || true
 
       - name: Upload screenshots artifact
         if: always()
@@ -148,15 +145,23 @@ jobs:
           retention-days: 14
 
       - name: Post screenshot gallery to PR
-        if: github.event_name == 'pull_request' && always()
+        if: github.event_name == 'pull_request'
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SCREENSHOT_DIR: ./screenshots/screenshots
+          SCREENSHOT_DIR: ./screenshots
         run: |
-          if [ ! -d "$SCREENSHOT_DIR" ] || [ -z "$(find "$SCREENSHOT_DIR" -name '*.png' 2>/dev/null)" ]; then
-            SCREENSHOT_DIR=./screenshots
-          fi
+          # Normalize: adb pull drops the files under ./screenshots/screenshots,
+          # so point the script at whichever dir actually has PNGs.
+          for d in ./screenshots/screenshots ./screenshots; do
+            if [ -d "$d" ] && [ -n "$(find "$d" -name '*.png' 2>/dev/null | head -1)" ]; then
+              SCREENSHOT_DIR="$d"; break
+            fi
+          done
           export SCREENSHOT_DIR
+          if [ -z "$(find "$SCREENSHOT_DIR" -name '*.png' 2>/dev/null | head -1)" ]; then
+            echo "No screenshots captured this run — skipping gallery comment."
+            exit 0
+          fi
           bash scripts/post_screenshots_to_pr.sh
