@@ -116,7 +116,7 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
-          arch: ${{ matrix.arch }}
+          arch: ${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch }}
           force-avd-creation: false
           # Plain cold boot; we do not use snapshots at test time (see below).
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -128,7 +128,7 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
-          arch: ${{ matrix.arch }}
+          arch: ${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch }}
           force-avd-creation: false
           # -no-snapshot-load: the cached snapshot was created with
           # -no-snapshot-save, so loading it leaves the input service
