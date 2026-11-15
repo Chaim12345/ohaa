@@ -28,6 +28,11 @@ class AppUiTest {
 
     private fun tag(t: String) = composeRule.onNodeWithTag(t)
 
+    /** Asserts the tagged node is present in the semantics tree (on- or off-screen). */
+    private fun androidx.compose.ui.test.SemanticsNodeInteraction.onNodeExists() {
+        fetchSemanticsNode()
+    }
+
     @Test
     fun bottomNavigationSwitchesBetweenAllScreens() {
         val destinations = listOf(
@@ -41,15 +46,14 @@ class AppUiTest {
         for ((navTag, landmark) in destinations) {
             tag(navTag).performClick()
             composeRule.waitForIdle()
-            // Only the selected tab is composed, so the landmark existing proves
-            // the tap switched screens. assertExists (not assertIsDisplayed)
-            // because a landmark need not sit in a scrollable ancestor.
-            tag(landmark).assertIsDisplayed()
+            // Landmarks may sit inside scrollable lists, so assert the node
+            // exists in the semantics tree rather than requiring it on-screen.
+            tag(landmark).onNodeExists()
         }
         // API Explorer is reached from Settings > Developer, not the bottom bar.
         tag("nav_explorer").performScrollTo().performClick()
         composeRule.waitForIdle()
-        tag("explorer_surface_cloud").assertIsDisplayed()
+        tag("explorer_surface_cloud").onNodeExists()
     }
 
     @Test
