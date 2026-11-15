@@ -443,7 +443,6 @@ fun EventItemView(
         }
     }
 }
-}
 
 /**
  * A horizontally scrolling row of chips with an edge fade that hints there is
