@@ -73,6 +73,11 @@ jobs:
   instrumented-tests:
     name: Instrumented UI tests (API ${{ matrix.api-level }} ${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    # The arm64 leg is experimental runner infrastructure (no Android SDK on
+    # the arm image, emulator/qemu-user setup still being worked out). It is
+    # NOT a PR gate: the x86_64 KVM leg runs the same tests. Keep it running
+    # so the setup can be iterated on, without keeping the workflow red.
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
     strategy:
       fail-fast: false
       matrix:
