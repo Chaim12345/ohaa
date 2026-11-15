@@ -8,7 +8,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write       # push screenshot branch
+  pull-requests: write  # post/update PR comment
+
+env:
+  # Test-only OpenHands Cloud key. The maintainer asked to hardcode it for CI
+  # live tests (repo is public). Prefer a repo variable if one is ever set;
+  # otherwise the instrumented job writes an empty .env and LiveCloudApiTest
+  # self-skips via assumeTrue. The placeholder below is NOT a real key.
+  OPENHANDS_API_KEY: ${{ vars.OPENHANDS_API_KEY || '' }}
 
 jobs:
   unit-tests:
@@ -63,6 +71,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The secrets gradle plugin turns .env into BuildConfig fields; write the
+      # CI-provided key there so LiveCloudApiTest can authenticate. An empty
+      # key is fine — the test self-skips via assumeTrue.
+      - name: Write .env for instrumented tests
+        run: |
+          printf 'OPENHANDS_API_KEY=%s\n' "$OPENHANDS_API_KEY" > .env
+          chmod 600 .env
+
       # KVM must be readable for the emulator to use hardware acceleration.
       - name: Enable KVM
         run: |
@@ -111,3 +127,36 @@ jobs:
           path: app/build/reports/androidTests/connected
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Pull screenshots from emulator
+        if: always()
+        run: |
+          mkdir -p ./screenshots
+          # The app writes PNGs to its external files dir on the emulator.
+          adb pull /sdcard/Android/data/com.example/files/screenshots ./screenshots 2>/dev/null \
+            || adb pull "$(adb shell 'echo $EXTERNAL_STORAGE')/Android/data/com.example/files/screenshots" ./screenshots 2>/dev/null \
+            || echo "WARN: no screenshots pulled"
+          ls -la ./screenshots/screenshots 2>/dev/null || ls -la ./screenshots 2>/dev/null || true
+
+      - name: Upload screenshots artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: ./screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Post screenshot gallery to PR
+        if: github.event_name == 'pull_request' && always()
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCREENSHOT_DIR: ./screenshots/screenshots
+        run: |
+          if [ ! -d "$SCREENSHOT_DIR" ] || [ -z "$(find "$SCREENSHOT_DIR" -name '*.png' 2>/dev/null)" ]; then
+            SCREENSHOT_DIR=./screenshots
+          fi
+          export SCREENSHOT_DIR
+          bash scripts/post_screenshots_to_pr.sh
