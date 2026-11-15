@@ -462,6 +462,7 @@ fun EdgeFadeRow(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp),
     horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(6.dp),
+    listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
     val showStart by remember {
@@ -479,7 +480,7 @@ fun EdgeFadeRow(
             state = state,
             horizontalArrangement = horizontalArrangement,
             contentPadding = contentPadding,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = listModifier.fillMaxWidth(),
             content = content,
         )
         ScrollEdgeFade(
