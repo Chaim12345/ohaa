@@ -56,8 +56,9 @@ class LiveCloudApiTest {
     }
 
     @After
-    fun tearDown() = runBlocking {
-        conversationId?.let { repo.deleteConversation(it) }
+    fun tearDown() {
+        val id = conversationId ?: return
+        runBlocking { repo.deleteConversation(id) }
     }
 
     @Test
