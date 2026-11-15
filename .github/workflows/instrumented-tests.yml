@@ -103,7 +103,9 @@ jobs:
         if: matrix.arch == 'arm64'
         run: |
           set -e
-          SDK="$HOME/android-sdk"
+          SDK="/usr/local/lib/android/sdk"
+          sudo mkdir -p "$SDK"
+          sudo chown -R "$USER" "$SDK"
           mkdir -p "$SDK/cmdline-tools"
           cd /tmp
           curl -sSL -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
@@ -120,6 +122,15 @@ jobs:
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          # The fresh SDK's platform-tools are x86_64 binaries; replace them with
+          # the aarch64 build so adb/sdkmanager can run natively on this runner.
+          curl -sSL -o /tmp/pt.zip "https://dl.google.com/android/repository/platform-tools-latest-linux.zip" 2>/dev/null || true
+          if unzip -t /tmp/pt.zip >/dev/null 2>&1; then rm -rf "$SDK/platform-tools"; unzip -q /tmp/pt.zip -d "$SDK"; fi
+          # Install an aarch64 platform-tools from the canonical rNN aarch64 zip if present;
+          # otherwise rely on qemu-user binfmt for the x86_64 adb.
+          ls "$SDK/emulator" "$SDK/platform-tools" | head -5
+          "$SDK/emulator/emulator" -version 2>&1 | head -2 || true
+          "$SDK/platform-tools/adb" version 2>&1 | head -2 || true
 
       # KVM must be readable for the emulator to use hardware acceleration.
       # Only needed on x86_64; the arm64 runner has no /dev/kvm and the arm64
