@@ -168,14 +168,22 @@ jobs:
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
           # Overlay the canonical emulator zip (always contains the linux
-          # binaries). 37.2.13 is used because it matches the revision in the
-          # synthesized package.xml below.
+          # binaries). 37.2.13 matches the synthesized package.xml below.
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
-          # sdkmanager leaves a manually overlaid zip unregistered; write a
-          # schema-v2 package.xml (no ns4 type-details) that this sdkmanager
-          # generation parses cleanly.
-          mkdir -p "$SDK/emulator"
+          # Register the overlaid package in the SDK-wide metadata that
+          # sdkmanager/avdmanager consult (schema v2, matching this
+          # cmdline-tools generation).
+          mkdir -p "$SDK/.knownPackages"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+            '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02">' \
+            '  <localPackage path="emulator" obsolete="false">' \
+            '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>' \
+            '    <display-name>Android Emulator</display-name>' \
+            '    <uses-license ref="android-sdk-license"/>' \
+            '  </localPackage>' \
+            '</ns2:repository>' > "$SDK/.knownPackages/package.xml"
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
             '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02">' \
