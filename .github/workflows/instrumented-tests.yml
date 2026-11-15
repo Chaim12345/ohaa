@@ -212,9 +212,11 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
-          arch: ${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch }}
-          force-avd-creation: false
-          # Plain cold boot; we do not use snapshots at test time (see below).
+          arch: ${{ matrix.arch == 'arm64' && 'x86_64' || matrix.arch }}
+          force-avd-creation: true
+          # On the arm64 runner the emulator binary is x86_64 and runs under
+          # qemu-user, which cannot nest-emulate an arm64 system image. The
+          # test APK is architecture-agnostic, so boot the x86_64 image.
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: echo "Generated AVD for caching."
@@ -224,8 +226,8 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
-          arch: ${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch }}
-          force-avd-creation: false
+          arch: ${{ matrix.arch == 'arm64' && 'x86_64' || matrix.arch }}
+          force-avd-creation: true
           # -no-snapshot-load: the cached snapshot was created with
           # -no-snapshot-save, so loading it leaves the input service
           # unpublished and the runner's `input keyevent 82` unlock crashes.
