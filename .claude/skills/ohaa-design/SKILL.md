@@ -114,10 +114,56 @@ Structure, top to bottom:
 - Destructive actions with no confirmation.
 - Buttons with `Color.White` text on light-primary fills.
 
+
+## Visual thesis
+
+ohaa is a terminal-adjacent agent console: quiet, dense, mono-forward, one deliberate accent.
+
+Decide these before writing any new screen code (the pre-build plan step):
+
+- Named hex tokens (4-6, not a seed-generated rainbow): surface/background from the existing dark-first palette, one accent (the OpenHands primary blue), status colors via StatusColors only. NOT default M3 purple/seed, NOT Anthropic #D97757.
+- Type roles: distinctive sans for prose/labels + monospace reserved for things that are literally code (commands, paths, args, ids). No third family.
+- One memorable element: the flat, one-line collapsible tool row. Everything else stays quiet.
+- Layout concept: single column, dense, no decorative chrome.
+
+## Mobile anti-patterns (never ship)
+
+- One corner radius on every card; identical card grids.
+- Gradient heroes or gradient washes anywhere.
+- ALL-CAPS eyebrow labels; middle-dot meta strings; "→" on every action.
+- Decorative entrance animations; icon-in-circle tiles.
+- Default M3 purple or an unmodified Material seed theme.
+- Cream + serif + terracotta or near-black + acid-green "AI default" palettes.
+
+## Typography
+
+Two families, bundled: a distinctive sans (system sans is acceptable while a bundled face is chosen; Inter/IBM Plex Sans when bundling) + monospace for code/args/ids only. Use the Compose type scale with intentional weights and tracking: titles 15sp semibold, body 14sp regular, meta 11sp, mono 12sp for tool args and 10-11sp for identifiers. Sentence-case copy everywhere; no ALL-CAPS labels.
+
+## Radius hierarchy
+
+- 8dp: code/terminal blocks, tool rows (tighter = more technical).
+- 12dp: message blocks, suggestion chips, input field.
+- Full round: status pills, the circular send button.
+Never one radius for everything.
+
+## Motion
+
+Motion only answers a user action (expand/collapse, send, tab switch). No decorative entrances. Respect reduced-motion settings: no auto-playing transitions beyond the system ripple. Press states stay at the default ripple - "no hover transitions" translates to "no decorative press animations."
+
+## Pre-emit checklist (gate before any screenshot is called done)
+
+1. The screen has a named visual direction before code (thesis above); if you cannot name it, stop and name it.
+2. Check the plan for generic defaults (M3 purple, gradient, uniform radius, ALL-CAPS, icon circles).
+3. Boldness in one place only (the tool rows); everything else quiet.
+4. Critique pass: remove one accessory element. If removal hurts, put it back; usually it does not.
+5. Contrast: 4.5:1 for text in both themes; no Color.White on filled buttons.
+6. Screenshot truthfully (themed wrapper) and compare against the Claude Code mobile benchmark - the benchmark wins conflicts with any rule above.
+
 ## Sources
 
 This skill folds in guidance from:
 
 - https://github.com/android/skills - Google's official Android agent skills (jetpack-compose, navigation, testing): platform correctness, adaptive layouts, edge-to-edge, performance, test setup.
 - https://github.com/wshobson/agents/tree/main/plugins/ui-design/skills - ui-design plugin: mobile-android-design (Material 3 + Compose theming, colorScheme, dark mode, adaptive) and accessibility-compliance (WCAG contrast, touch targets, semantics).
-- https://github.com/anthropics/skills - Anthropic's official skills repo: skill-creator conventions for how this skill is structured.
+- https://github.com/anthropics/skills - Anthropic's official skills repo: skill-creator conventions for how this skill is structured, plus frontend-design (AI-default tell list, plan-first process).
+- https://github.com/ferousco-dev/anti-slop-design - banned-pattern list, name-a-visual-direction rule, pre-emit checklist (mobile modules 16/17/19).

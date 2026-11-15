@@ -39,6 +39,25 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
+      # Roborazzi screen captures (JVM, no emulator) - the PR screenshot set
+      # reviewed against the Claude Code mobile benchmark. DISABLE_AUTOSCROLL
+      # keeps lazy lists pinned to the top so captures are deterministic.
+      - name: Record UI screenshots (Roborazzi)
+        env:
+          DISABLE_AUTOSCROLL: "1"
+        run: ./gradlew recordRoborazziDebug --no-daemon --stacktrace
+
+      - name: Upload Roborazzi screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roborazzi-screenshots
+          path: |
+            app/app/src/test/screenshots
+            app/src/test/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload unit test report
         if: always()
         uses: actions/upload-artifact@v4
