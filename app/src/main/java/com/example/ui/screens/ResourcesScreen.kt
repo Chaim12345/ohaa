@@ -28,6 +28,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.PaddingValues
+import com.example.ui.components.EdgeFadeRow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +63,6 @@ import com.example.data.model.SkillInfoDto
 import com.example.data.model.UpdateUserSettingsRequest
 import com.example.data.model.UserSettingsDto
 import com.example.data.model.WebClientConfigDto
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 /**
  * Cloud resources: secrets, skills, sandboxes, git, and settings. Each section
@@ -148,18 +150,18 @@ fun ResourcesScreen(
                 },
                 modifier = Modifier.testTag("resources_refresh")
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = OpenHandsPrimaryDark)
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary)
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        val tabRowState = rememberLazyListState()
+        EdgeFadeRow(
+            state = tabRowState,
+            contentPadding = PaddingValues(horizontal = 0.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
         ) {
-            listOf("Secrets", "Skills", "Sandboxes", "Git", "Profiles", "Settings").forEach { s ->
+            items(listOf("Secrets", "Skills", "Sandboxes", "Git", "Profiles", "Settings")) { s ->
                 FilterChip(
                     selected = section == s,
                     onClick = { section = s },
@@ -672,7 +674,7 @@ private fun SandboxesSection(
                                         Icon(
                                             imageVector = if (running) Icons.Default.Pause else Icons.Default.PlayArrow,
                                             contentDescription = if (running) "Pause sandbox" else "Resume sandbox",
-                                            tint = OpenHandsPrimaryDark
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
