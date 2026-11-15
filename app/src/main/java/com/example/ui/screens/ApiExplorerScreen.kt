@@ -13,7 +13,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.runtime.Composable
@@ -22,7 +25,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -49,6 +54,7 @@ fun ApiExplorerScreen(
     var path by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var methodMenu by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
     var showSchemas by remember { mutableStateOf(false) }
     val paths = when (surface) {
         "cloud" -> cloudPaths
@@ -90,7 +96,7 @@ fun ApiExplorerScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Column {
-                Button(onClick = { methodMenu = true }, modifier = Modifier.testTag("explorer_method")) {
+                OutlinedButton(onClick = { methodMenu = true }, modifier = Modifier.testTag("explorer_method")) {
                     Text(method)
                 }
                 DropdownMenu(expanded = methodMenu, onDismissRequest = { methodMenu = false }) {
@@ -123,7 +129,15 @@ fun ApiExplorerScreen(
 
         if (response != null) {
             Card(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Text(response, fontSize = 11.sp, modifier = Modifier.padding(12.dp).testTag("explorer_response"))
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = { clipboardManager.setText(AnnotatedString(response)) },
+                            modifier = Modifier.testTag("explorer_copy_response"),
+                        ) { Text("Copy") }
+                    }
+                    Text(response, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.fillMaxWidth().testTag("explorer_response"))
+                }
             }
         }
 
@@ -131,7 +145,7 @@ fun ApiExplorerScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 8.dp),
         ) {
-            Button(
+            OutlinedButton(
                 onClick = {
                     showSchemas = !showSchemas
                     if (showSchemas) onLoadSchemas()
@@ -151,6 +165,7 @@ fun ApiExplorerScreen(
                         append(conversationSchema ?: "(not loaded)")
                     },
                     fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
                     modifier = Modifier.padding(12.dp).testTag("explorer_schemas"),
                 )
             }
@@ -162,11 +177,12 @@ fun ApiExplorerScreen(
                 Text(
                     p,
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.primary,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 3.dp)
+                        .clickable { path = p }
+                        .padding(vertical = 6.dp)
                         .testTag("explorer_path_item"),
                 )
             }
