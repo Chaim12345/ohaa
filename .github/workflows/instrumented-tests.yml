@@ -142,8 +142,11 @@ jobs:
           sudo apt-get install -y -qq qemu-user-static binfmt-support
           # x86_64 runtime libs for the emulated adb/emulator binaries. On arm64
           # hosts these come from the amd64 multiarch repo, not the arm64 one.
-          sudo dpkg --add-architecture amd64 && sudo apt-get update -qq
-          sudo apt-get install -y -qq libc6:amd64 libstdc++6:amd64 || true
+          sudo dpkg --add-architecture amd64
+          printf 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble main universe\ndeb [arch=amd64] http://archive.ubuntu.com/ubuntu noble-updates main universe\ndeb [arch=amd64] http://security.ubuntu.com/ubuntu noble-security main universe\n' | sudo tee /etc/apt/sources.list.d/amd64.list
+          sudo apt-get update -qq -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/amd64.list -o Dir::Etc::sourceparts=/dev/null -o APT::Get::List-Cleanup=0
+          sudo apt-get install -y -qq --no-install-recommends libc6:amd64 libstdc++6:amd64 || true
+          rm -f /etc/apt/sources.list.d/amd64.list
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
