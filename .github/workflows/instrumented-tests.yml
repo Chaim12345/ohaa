@@ -138,7 +138,7 @@ jobs:
           # channel-3 = latest stable metadata that still carries the emulator pkg
           # Google publishes only x86_64 linux emulator/platform-tools binaries.
           # On the arm64 runner they execute through qemu-user via binfmt_misc.
-          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static binfmt-support
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static binfmt-support libc6-amd64 libstdc++6-amd64
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
