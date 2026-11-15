@@ -59,7 +59,6 @@ import com.example.ui.screens.ResourcesScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TasksScreen
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.ThemeMode
 import com.example.ui.viewmodel.AppNavTab
 import com.example.ui.viewmodel.OpenHandsViewModel
@@ -162,9 +161,9 @@ fun OpenHandsApp(
                     )
                   },
                   colors = NavigationBarItemDefaults.colors(
-                      selectedIconColor = OpenHandsPrimaryDark,
-                      selectedTextColor = OpenHandsPrimaryDark,
-                      indicatorColor = OpenHandsPrimaryDark.copy(alpha = 0.15f)
+                      selectedIconColor = MaterialTheme.colorScheme.primary,
+                      selectedTextColor = MaterialTheme.colorScheme.primary,
+                      indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                   ),
                   modifier = Modifier.testTag("nav_${tab.name.lowercase()}")
               )

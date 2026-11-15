@@ -75,7 +75,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.AgentEvent
 import com.example.data.model.ConversationStatus
 import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.LocalAppIsDark
 import com.example.ui.theme.StatusColors
 import com.example.ui.theme.OpenHandsSecondaryDark
@@ -222,7 +221,7 @@ fun TerminalCodeBlock(
                 Icon(
                     imageVector = Icons.Default.Terminal,
                     contentDescription = null,
-                    tint = OpenHandsPrimaryDark,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(13.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))

@@ -54,7 +54,6 @@ import com.example.data.model.RuntimeLlmModelDto
 import com.example.data.model.RuntimeSettingsDto
 import com.example.data.model.SubAgentDto
 import com.example.data.model.ToolCatalogEntryDto
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 private val sheetShape = RoundedCornerShape(18.dp)
 
@@ -98,7 +97,7 @@ private fun MetricLine(label: String, value: String?) {
 @Composable
 private fun ActionChip(label: String, tag: String, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(
-        color = if (enabled) OpenHandsPrimaryDark.copy(alpha = 0.12f)
+        color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
         else MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
@@ -109,7 +108,7 @@ private fun ActionChip(label: String, tag: String, enabled: Boolean = true, onCl
             label,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
-            color = if (enabled) OpenHandsPrimaryDark else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
         )
     }
@@ -209,7 +208,7 @@ fun AdvancedRuntimeSheet(
 
             if (isBusy) {
                 Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = OpenHandsPrimaryDark, modifier = Modifier.size(22.dp))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -515,7 +514,7 @@ fun VSCodeSheet(url: String?, isLoading: Boolean, onDismiss: () -> Unit) {
     SheetScaffold(title = "VS Code", onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth()) {
             if (isLoading) {
-                CircularProgressIndicator(color = OpenHandsPrimaryDark, modifier = Modifier.size(24.dp))
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
             } else if (url.isNullOrBlank()) {
                 Text("VS Code is not available for this sandbox.", fontSize = 12.sp)
             } else {

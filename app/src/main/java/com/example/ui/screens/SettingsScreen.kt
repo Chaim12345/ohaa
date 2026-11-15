@@ -58,7 +58,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
 import com.example.ui.theme.StatusReady
 import com.example.ui.theme.StatusWorking
@@ -101,13 +100,13 @@ fun SettingsScreen(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(OpenHandsPrimaryDark.copy(alpha = 0.15f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Cloud,
                     contentDescription = null,
-                    tint = OpenHandsPrimaryDark,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -186,7 +185,7 @@ fun SettingsScreen(
             onValueChange = onApiKeyChanged,
             placeholder = { Text("Paste your OpenHands API Key here") },
             leadingIcon = {
-                Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = OpenHandsPrimaryDark)
+                Icon(imageVector = Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             },
             trailingIcon = {
                 IconButton(onClick = { showApiKey = !showApiKey }) {
@@ -200,7 +199,7 @@ fun SettingsScreen(
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -230,12 +229,12 @@ fun SettingsScreen(
             onValueChange = onBaseUrlChanged,
             placeholder = { Text("https://app.all-hands.dev") },
             leadingIcon = {
-                Icon(imageVector = Icons.Default.Cloud, contentDescription = null, tint = OpenHandsPrimaryDark)
+                Icon(imageVector = Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -331,7 +330,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Default.Palette,
                         contentDescription = null,
-                        tint = OpenHandsPrimaryDark,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -363,8 +362,8 @@ fun SettingsScreen(
                             label = { Text(label) },
                             shape = RoundedCornerShape(10.dp),
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
-                                selectedLabelColor = OpenHandsPrimaryDark
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                selectedLabelColor = MaterialTheme.colorScheme.primary
                             ),
                             modifier = Modifier
                                 .weight(1f)
@@ -394,7 +393,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
-                        tint = OpenHandsPrimaryDark,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))

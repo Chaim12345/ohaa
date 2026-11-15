@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.AgentProfileInfoDto
 import com.example.data.model.PromptTemplate
 import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
 
@@ -115,13 +114,13 @@ fun NewTaskScreen(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(OpenHandsPrimaryDark.copy(alpha = 0.15f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.RocketLaunch,
                     contentDescription = null,
-                    tint = OpenHandsPrimaryDark,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -159,12 +158,12 @@ fun NewTaskScreen(
             items(templates) { template ->
                 val selected = template.id == selectedTemplateId
                 Surface(
-                    color = if (selected) OpenHandsPrimaryDark.copy(alpha = 0.18f)
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                     else MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(10.dp),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
-                        if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.outline
+                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     ),
                     modifier = Modifier
                         .clickable { onSelectTemplate(template) }
@@ -182,7 +181,7 @@ fun NewTaskScreen(
                                 else -> Icons.Default.Code
                             },
                             contentDescription = null,
-                            tint = OpenHandsPrimaryDark,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -190,7 +189,7 @@ fun NewTaskScreen(
                             text = template.title,
                             fontSize = 12.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) OpenHandsPrimaryDark
+                            color = if (selected) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -223,13 +222,13 @@ fun NewTaskScreen(
                 Icon(
                     imageVector = Icons.Default.Code,
                     contentDescription = null,
-                    tint = OpenHandsPrimaryDark
+                    tint = MaterialTheme.colorScheme.primary
                 )
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -246,7 +245,7 @@ fun NewTaskScreen(
         ) {
             items(quickRepos) { repo ->
                 Surface(
-                    color = OpenHandsPrimaryDark.copy(alpha = 0.08f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.clickable { onRepoChanged(repo) }
                 ) {
@@ -254,7 +253,7 @@ fun NewTaskScreen(
                         text = repo,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = OpenHandsPrimaryDark,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -280,13 +279,13 @@ fun NewTaskScreen(
                 Icon(
                     imageVector = Icons.Default.CallSplit,
                     contentDescription = null,
-                    tint = OpenHandsPrimaryDark
+                    tint = MaterialTheme.colorScheme.primary
                 )
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -323,7 +322,7 @@ fun NewTaskScreen(
             maxLines = 10,
             shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -355,7 +354,7 @@ fun NewTaskScreen(
                     listOf("default" to "Standard", "plan" to "Plan").forEach { (value, label) ->
                         val selected = agentTypeSelection == value
                         Surface(
-                            color = if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .clickable { onAgentTypeChanged(value) }
@@ -380,7 +379,7 @@ fun NewTaskScreen(
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = OpenHandsPrimaryDark,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("new_task_model_input")
@@ -394,7 +393,7 @@ fun NewTaskScreen(
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = OpenHandsPrimaryDark,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("new_task_profile_input")
@@ -434,7 +433,7 @@ fun NewTaskScreen(
                                 .ifBlank { p.agentKind ?: "acp" }
                             val subtitleText = if (p.scope != null) "$subtitle · ${p.scope}" else subtitle
                             Surface(
-                                color = if (selected) OpenHandsPrimaryDark
+                                color = if (selected) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
@@ -502,7 +501,7 @@ fun NewTaskScreen(
             enabled = !isLoading && !isProvisioning && promptText.isNotBlank(),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = OpenHandsPrimaryDark
+                containerColor = MaterialTheme.colorScheme.primary
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -533,7 +532,7 @@ fun NewTaskScreen(
             Spacer(modifier = Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(
-                    color = OpenHandsPrimaryDark,
+                    color = MaterialTheme.colorScheme.primary,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(16.dp)
                 )

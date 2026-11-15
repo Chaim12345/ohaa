@@ -52,7 +52,6 @@ import com.example.data.model.GitCommitDto
 import com.example.data.model.GitDiffDto
 import com.example.data.model.LlmModelDto
 import com.example.data.model.ProfileInfoDto
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 private val sheetShape = RoundedCornerShape(18.dp)
 
@@ -102,7 +101,7 @@ private fun SelectableRow(
     onClick: () -> Unit,
 ) {
     Surface(
-        color = if (selected) OpenHandsPrimaryDark.copy(alpha = 0.12f)
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
         else MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier
@@ -259,7 +258,7 @@ fun ModelSheet(
                         items(efforts) { e ->
                             val selected = e.value == currentEffort
                             Surface(
-                                color = if (selected) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .clickable(enabled = acpSupportsRuntimeModelSwitch) { e.value?.let(onSwitchEffort) }
@@ -310,7 +309,7 @@ fun ModelSheet(
             if (isBusy) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = OpenHandsPrimaryDark, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
