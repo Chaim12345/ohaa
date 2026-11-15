@@ -268,7 +268,7 @@ fun ModelSheet(
                                 Text(
                                     text = e.name ?: e.value ?: "?",
                                     fontSize = 12.sp,
-                                    color = if (selected) Color.White
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(
                                         alpha = if (acpSupportsRuntimeModelSwitch) 1f else 0.5f
                                     ),
@@ -348,15 +348,15 @@ fun ContextSheet(
             Button(
                 onClick = onCompact,
                 enabled = !isBusy,
-                colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("compact_context_button")
             ) {
                 if (isBusy) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                 } else {
-                    Text("Compact context", color = Color.White)
+                    Text("Compact context", color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -409,15 +409,15 @@ fun TerminalSheet(
                 Button(
                     onClick = onRun,
                     enabled = command.isNotBlank() && !isBusy,
-                    colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("terminal_run_button")
                 ) {
                     if (isBusy) {
-                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                     } else {
-                        Text("Run", color = Color.White)
+                        Text("Run", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
                 OutlinedButton(

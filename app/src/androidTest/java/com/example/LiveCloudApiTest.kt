@@ -37,7 +37,14 @@ class LiveCloudApiTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        val key = com.example.BuildConfig.OPENHANDS_API_KEY
+        // BuildConfig.OPENHANDS_API_KEY only exists when the secrets plugin
+        // actually emitted it (non-blank .env value). Reflectively probe so the
+        // app still compiles when the field is absent (blank key / placeholder).
+        val key = try {
+            com.example.BuildConfig::class.java.getField("OPENHANDS_API_KEY").get(null) as String
+        } catch (_: NoSuchFieldException) {
+            ""
+        }
         assumeTrue(
             "OPENHANDS_API_KEY not configured — skipping live test",
             key.isNotBlank() && key != "OPENHANDS_API_KEY_PLACEHOLDER"

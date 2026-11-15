@@ -259,7 +259,10 @@ fun ConversationDetailScreen(
                                     ?: "Conversation: ${(conversation?.id ?: "").take(8)}",
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                         }
                     }
@@ -368,17 +371,17 @@ fun ConversationDetailScreen(
                             onClick = onResume,
                             enabled = !isResuming,
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             modifier = Modifier.testTag("runtime_resume_button")
                         ) {
                             if (isResuming) {
                                 CircularProgressIndicator(
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                     strokeWidth = 2.dp,
                                     modifier = Modifier.size(16.dp)
                                 )
                             } else {
-                                Text("Resume", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Resume", color = MaterialTheme.colorScheme.onPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -417,17 +420,17 @@ fun ConversationDetailScreen(
                         onClick = onResume,
                         enabled = !isResuming,
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier.testTag("resume_sandbox_button")
                     ) {
                         if (isResuming) {
                             CircularProgressIndicator(
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp,
                                 modifier = Modifier.size(16.dp)
                             )
                         } else {
-                            Text("Resume", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Resume", color = MaterialTheme.colorScheme.onPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -678,7 +681,7 @@ fun ConversationDetailScreen(
                     ) {
                         if (isSendingMessage) {
                             CircularProgressIndicator(
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -686,7 +689,7 @@ fun ConversationDetailScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = if (followUpText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (followUpText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -745,9 +748,9 @@ fun ConversationDetailScreen(
                         onRename(renameText.trim())
                     },
                     enabled = renameText.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.testTag("confirm_rename_button")
-                ) { Text("Save", color = Color.White) }
+                ) { Text("Save", color = MaterialTheme.colorScheme.onPrimary) }
             },
             dismissButton = {
                 TextButton(onClick = { showRename = false }) { Text("Cancel") }

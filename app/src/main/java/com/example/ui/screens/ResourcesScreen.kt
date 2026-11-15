@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -115,7 +116,7 @@ fun ResourcesScreen(
     onActivateCloudAgentProfile: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var section by remember { mutableStateOf("Secrets") }
+    var section by rememberSaveable { mutableStateOf("Secrets") }
     var showAddSecret by remember { mutableStateOf(false) }
 
     Column(
@@ -128,7 +129,12 @@ fun ResourcesScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Cloud Resources", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                "Cloud Resources",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
             IconButton(
                 onClick = {
                     when (section) {
@@ -163,7 +169,7 @@ fun ResourcesScreen(
             }
         }
 
-        if (gitLogin != null) {
+        if (section == "Git" && gitLogin != null) {
             Text(
                 text = "Git account: $gitLogin",
                 fontSize = 11.sp,
@@ -523,9 +529,9 @@ private fun SettingsSection(
                     )
                 )
             },
-            colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth().testTag("settings_save")
-        ) { Text("Save settings", color = Color.White) }
+        ) { Text("Save", color = MaterialTheme.colorScheme.onPrimary) }
 
         if (webClient != null) {
             Spacer(Modifier.height(12.dp))
@@ -543,6 +549,7 @@ private fun SecretsSection(
     onAdd: () -> Unit,
     onDelete: (String) -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
         OutlinedButton(
             onClick = onAdd,
@@ -561,11 +568,28 @@ private fun SecretsSection(
                     ResourceRow(
                         title = s.name ?: "(unnamed)",
                         subtitle = s.description ?: s.scope,
-                        onDelete = s.id?.let { id -> { onDelete(id) } }
+                        onDelete = s.id?.let { id -> { pendingDelete = id } }
                     )
                 }
             }
         }
+    }
+
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete secret?") },
+            text = { Text("This permanently removes the secret from your cloud workspace.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(pendingDelete!!)
+                    pendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -806,9 +830,9 @@ private fun AddSecretDialog(
             Button(
                 onClick = { if (name.isNotBlank() && value.isNotBlank()) onSave(name, value, description.ifBlank { null }) },
                 enabled = name.isNotBlank() && value.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 modifier = Modifier.testTag("secret_save_button")
-            ) { Text("Save", color = Color.White) }
+            ) { Text("Save", color = MaterialTheme.colorScheme.onPrimary) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

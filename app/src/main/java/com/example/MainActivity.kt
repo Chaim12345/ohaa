@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Api
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -120,6 +121,18 @@ fun OpenHandsApp(
   Scaffold(
       modifier = Modifier.fillMaxSize(),
       snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+      floatingActionButton = {
+        if (uiState.selectedConversationId == null) {
+          FloatingActionButton(
+              onClick = { viewModel.setTab(AppNavTab.NEW_TASK) },
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary,
+              modifier = Modifier.testTag("fab_new_task")
+          ) {
+            Icon(Icons.Default.AddCircle, contentDescription = "New Task")
+          }
+        }
+      },
       bottomBar = {
         if (uiState.selectedConversationId == null) {
           NavigationBar(
@@ -129,9 +142,7 @@ fun OpenHandsApp(
             val tabs = listOf(
                 Triple(AppNavTab.DASHBOARD, Icons.Default.Dashboard, "Home"),
                 Triple(AppNavTab.TASKS, Icons.AutoMirrored.Filled.FormatListBulleted, "Tasks"),
-                Triple(AppNavTab.NEW_TASK, Icons.Default.AddCircle, "New Task"),
                 Triple(AppNavTab.RESOURCES, Icons.Default.Folder, "Resources"),
-                Triple(AppNavTab.EXPLORER, Icons.Default.Api, "API"),
                 Triple(AppNavTab.SETTINGS, Icons.Default.Settings, "Settings")
             )
 

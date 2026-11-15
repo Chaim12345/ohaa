@@ -70,6 +70,7 @@ import com.example.ui.theme.OpenHandsPrimaryDark
 import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsSurfaceVariantDark
 import com.example.ui.theme.OpenHandsTerminalBg
+import com.example.ui.theme.OpenHandsTextPrimaryDark
 import com.example.ui.theme.OpenHandsTertiaryDark
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusPaused
@@ -215,7 +216,7 @@ fun TerminalCodeBlock(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = title,
-                    color = Color.White.copy(alpha = 0.7f),
+                    color = OpenHandsTextPrimaryDark.copy(alpha = 0.7f),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
@@ -230,7 +231,7 @@ fun TerminalCodeBlock(
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
                     contentDescription = "Copy code",
-                    tint = Color.White.copy(alpha = 0.7f),
+                    tint = OpenHandsTextPrimaryDark.copy(alpha = 0.7f),
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -283,14 +284,14 @@ fun EventItemView(
                                 text = "You (Prompt)",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.85f)
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = event.content,
                             fontSize = 14.sp,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }

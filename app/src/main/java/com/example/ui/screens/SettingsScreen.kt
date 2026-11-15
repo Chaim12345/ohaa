@@ -251,15 +251,15 @@ fun SettingsScreen(
             Button(
                 onClick = onSaveConfig,
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp)
                     .testTag("save_config_button")
             ) {
-                Icon(imageVector = Icons.Default.Save, contentDescription = null, tint = Color.White)
+                Icon(imageVector = Icons.Default.Save, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Save Credentials", fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Save Credentials", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
             }
 
             OutlinedButton(

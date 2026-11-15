@@ -209,7 +209,7 @@ fun DashboardScreen(
                             Text(
                                 text = connectionStatus ?: "Cloud API V1: Ready",
                                 fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.9f),
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                                 fontFamily = FontFamily.Monospace
                             )
                         }
@@ -217,7 +217,7 @@ fun DashboardScreen(
                             text = "Autonomous Coding Sandbox",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }
@@ -237,13 +237,13 @@ fun DashboardScreen(
                     .height(50.dp)
                     .testTag("new_agent_task_cta")
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = Color.White)
+                Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Launch New Agent Task",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }

@@ -82,10 +82,12 @@ jobs:
 
       # The secrets gradle plugin turns .env into BuildConfig fields; write the
       # CI-provided key there so LiveCloudApiTest can authenticate. An empty
-      # key is fine — the test self-skips via assumeTrue.
+      # key is fine — the test self-skips via assumeTrue. Always quote the
+      # value: the plugin emits it verbatim into BuildConfig.java, and an
+      # unquoted empty string is a Java syntax error.
       - name: Write .env for instrumented tests
         run: |
-          printf 'OPENHANDS_API_KEY=%s\n' "$OPENHANDS_API_KEY" > .env
+          printf 'OPENHANDS_API_KEY=%s\n' "${OPENHANDS_API_KEY:-}" > .env
           chmod 600 .env
 
       # KVM must be readable for the emulator to use hardware acceleration.

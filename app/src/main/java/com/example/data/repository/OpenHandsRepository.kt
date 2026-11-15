@@ -102,7 +102,13 @@ class OpenHandsRepository(
 
     var apiKey: String
         get() {
-            val key = prefs.getString("api_key", BuildConfig.OPENHANDS_API_KEY) ?: ""
+            val pref = prefs.getString("api_key", null)
+            val fallback = try {
+                BuildConfig::class.java.getField("OPENHANDS_API_KEY").get(null) as String
+            } catch (_: NoSuchFieldException) {
+                ""
+            }
+            val key = pref ?: fallback
             return if (key == "OPENHANDS_API_KEY_PLACEHOLDER") "" else key
         }
         set(value) = prefs.edit().putString("api_key", value.trim()).apply()

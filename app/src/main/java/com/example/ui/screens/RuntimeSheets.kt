@@ -525,9 +525,9 @@ fun VSCodeSheet(url: String?, isLoading: Boolean, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = { runCatching { uriHandler.openUri(url) } },
-                    colors = ButtonDefaults.buttonColors(containerColor = OpenHandsPrimaryDark),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.testTag("vscode_open")
-                ) { Text("Open in browser", color = Color.White) }
+                ) { Text("Open in browser", color = MaterialTheme.colorScheme.onPrimary) }
             }
         }
     }

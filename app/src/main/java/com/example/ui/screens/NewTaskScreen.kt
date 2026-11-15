@@ -364,7 +364,7 @@ fun NewTaskScreen(
                             Text(
                                 label,
                                 fontSize = 12.sp,
-                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
                         }
@@ -449,13 +449,13 @@ fun NewTaskScreen(
                                         text = p.name ?: p.id ?: "ACP profile",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (selected) Color.White
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary
                                         else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
                                         text = subtitleText,
                                         fontSize = 10.sp,
-                                        color = if (selected) Color.White.copy(alpha = 0.8f)
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                                         else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -511,20 +511,20 @@ fun NewTaskScreen(
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Submitting task...")
             } else {
-                Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Deploy Task to OpenHands",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }

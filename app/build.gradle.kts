@@ -78,6 +78,10 @@ android {
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
+  // Ignore blank values so an empty .env line doesn't emit invalid Java
+  // (`String X = ;`) into BuildConfig when no key is configured (e.g. CI
+  // without OPENHANDS_API_KEY).
+  ignoreList.add("OPENHANDS_API_KEY")
 }
 
 // Some unused dependencies are commented out below instead of being removed.
