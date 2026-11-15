@@ -132,24 +132,18 @@ jobs:
           mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null
           # channel-3 = latest stable metadata that still carries the emulator pkg
-          # The bundled sdkmanager lists arm64 images but not the emulator pkg itself;
-          # install the emulator straight from the canonical repository zip.
-          # No linux aarch64 emulator zip is published; the x86_64 emulator binary
-          # runs fine under qemu-user on the arm64 runner via binfmt, so install it.
+          # Google publishes only x86_64 linux emulator/platform-tools binaries.
+          # On the arm64 runner they execute through qemu-user via binfmt_misc.
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static binfmt-support
+          sudo systemctl restart systemd-binfmt 2>/dev/null || true
+          update-binfmts --enable qemu-x86_64 2>/dev/null || true
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          # The fresh SDK's platform-tools are x86_64 binaries; replace them with
-          # the aarch64 build so adb/sdkmanager can run natively on this runner.
-          curl -sSL -o /tmp/pt.zip "https://dl.google.com/android/repository/platform-tools-latest-linux.zip" 2>/dev/null || true
-          if unzip -t /tmp/pt.zip >/dev/null 2>&1; then rm -rf "$SDK/platform-tools"; unzip -q /tmp/pt.zip -d "$SDK"; fi
-          # Install an aarch64 platform-tools from the canonical rNN aarch64 zip if present;
-          # otherwise rely on qemu-user binfmt for the x86_64 adb.
-          ls "$SDK/emulator" "$SDK/platform-tools" | head -5
-          "$SDK/emulator/emulator" -version 2>&1 | head -2 || true
-          "$SDK/platform-tools/adb" version 2>&1 | head -2 || true
+          "$SDK/platform-tools/adb" version | head -1
+          "$SDK/emulator/emulator" -version 2>&1 | head -1
 
       # KVM must be readable for the emulator to use hardware acceleration.
       # Only needed on x86_64; the arm64 runner has no /dev/kvm and the arm64
