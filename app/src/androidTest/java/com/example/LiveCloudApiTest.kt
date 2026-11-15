@@ -7,8 +7,6 @@ import com.example.data.local.AppDatabase
 import com.example.data.repository.AgentServerRepository
 import com.example.data.repository.OpenHandsRepository
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -17,14 +15,19 @@ import org.junit.runner.RunWith
 
 /**
  * Live smoke test against the real OpenHands Cloud API. Runs on the emulator in
- * CI where `OPENHANDS_API_KEY` is injected as a BuildConfig field (via the secrets
- * gradle plugin reading `.env`). Skipped entirely when no key is present, so local
- * runs without a key are unaffected.
+ * CI where `OPENHANDS_API_KEY` and `OPENHANDS_TEST_CONVERSATION_ID` are injected
+ * as BuildConfig fields (via the secrets gradle plugin reading `.env`). Skipped
+ * entirely when either is absent, so local runs without secrets are unaffected.
  *
- * The flow exercises the exact call chain the UI uses: health check -> list ->
- * start -> await sandbox -> send message -> runtime ops (server info, bash,
- * git changes, condense) -> delete. The conversation is always deleted in
- * [tearDown] so repeated runs don't leak sandboxes.
+ * Owner rule: tests must reuse ONE pinned conversation, never create a new one
+ * per run. The pinned conversation id comes from the `OPENHANDS_TEST_CONVERSATION_ID`
+ * repo variable; the test never starts or deletes conversations. Set up the
+ * conversation once by hand in the app, copy its id into the repo variable, and
+ * every CI run exercises the same sandbox.
+ *
+ * The flow exercises the call chain the UI uses against that conversation:
+ * health check -> list -> refresh -> send message -> runtime ops (server info,
+ * bash, git changes, condense) -> events.
  */
 @RunWith(AndroidJUnit4::class)
 class LiveCloudApiTest {
@@ -34,31 +37,35 @@ class LiveCloudApiTest {
     private lateinit var runtime: AgentServerRepository
     private var conversationId: String? = null
 
+    private fun buildConfigField(name: String): String = try {
+        com.example.BuildConfig::class.java.getField(name).get(null) as String
+    } catch (_: NoSuchFieldException) {
+        ""
+    }
+
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        // BuildConfig.OPENHANDS_API_KEY only exists when the secrets plugin
-        // actually emitted it (non-blank .env value). Reflectively probe so the
-        // app still compiles when the field is absent (blank key / placeholder).
-        val key = try {
-            com.example.BuildConfig::class.java.getField("OPENHANDS_API_KEY").get(null) as String
-        } catch (_: NoSuchFieldException) {
-            ""
-        }
+        // BuildConfig fields only exist when the secrets plugin actually emitted
+        // them (non-blank .env values). Reflectively probe so the app still
+        // compiles when the fields are absent (blank key / placeholder).
+        val key = buildConfigField("OPENHANDS_API_KEY")
         assumeTrue(
             "OPENHANDS_API_KEY not configured — skipping live test",
             key.isNotBlank() && key != "OPENHANDS_API_KEY_PLACEHOLDER"
         )
+        val pinned = buildConfigField("OPENHANDS_TEST_CONVERSATION_ID")
+        assumeTrue(
+            "OPENHANDS_TEST_CONVERSATION_ID not configured — live tests reuse one " +
+                "pinned conversation and never create new ones. Create a conversation " +
+                "once in the app and put its id in the repo variable.",
+            pinned.isNotBlank() && pinned != "OPENHANDS_TEST_CONVERSATION_ID_PLACEHOLDER"
+        )
+        conversationId = pinned
         val db = AppDatabase.getInstance(context)
         repo = OpenHandsRepository(context, db)
         repo.updateConfig(key, OpenHandsRepository.DEFAULT_BASE_URL)
         runtime = AgentServerRepository(db.conversationDao())
-    }
-
-    @After
-    fun tearDown() {
-        val id = conversationId ?: return
-        runBlocking { repo.deleteConversation(id) }
     }
 
     @Test
@@ -71,19 +78,7 @@ class LiveCloudApiTest {
         val list = repo.refreshConversations()
         assertTrue("list failed: $list", list.isSuccess)
 
-        // 3. Start a real conversation on a tiny repo with a trivial prompt
-        val started = repo.startConversation(
-            prompt = "Reply with exactly: LIVE_OK",
-            repository = "https://github.com/Chaim12345/ohaa.git",
-            branch = "main",
-        )
-        assertTrue("start failed: $started", started.isSuccess)
-        val taskId = started.getOrThrow().taskId
-
-        // 4. Wait for the sandbox to come up (start-task poll loop)
-        val conv = withTimeout(90_000) { repo.awaitConversationId(taskId) }
-        assertTrue("await failed: $conv", conv.isSuccess)
-        conversationId = conv.getOrThrow()
+        // 3. Reuse the pinned conversation - never start a new one per run
         val id = conversationId!!
 
         // 5. The conversation is cached locally with a runtime URL + session key

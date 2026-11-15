@@ -17,6 +17,9 @@ env:
   # otherwise the instrumented job writes an empty .env and LiveCloudApiTest
   # self-skips via assumeTrue. The placeholder below is NOT a real key.
   OPENHANDS_API_KEY: ${{ vars.OPENHANDS_API_KEY || '' }}
+  # One pinned conversation the live tests reuse; they never create or delete
+  # conversations. Create it once in the app, copy the id into this repo variable.
+  OPENHANDS_TEST_CONVERSATION_ID: ${{ vars.OPENHANDS_TEST_CONVERSATION_ID || '' }}
 
 jobs:
   unit-tests:
@@ -107,6 +110,7 @@ jobs:
       - name: Write .env for instrumented tests
         run: |
           printf 'OPENHANDS_API_KEY=%s\n' "${OPENHANDS_API_KEY:-}" > .env
+          printf 'OPENHANDS_TEST_CONVERSATION_ID=%s\n' "${OPENHANDS_TEST_CONVERSATION_ID:-}" >> .env
           chmod 600 .env
 
       # The arm64 runner image ships the Android SDK cmdline-tools but not the
