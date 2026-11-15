@@ -87,7 +87,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Cache AVD snapshot
+      - name: Cache AVD
         uses: actions/cache@v4
         id: avd-cache
         with:
@@ -96,7 +96,7 @@ jobs:
             ~/.android/adb*
           key: avd-${{ matrix.api-level }}-${{ matrix.target }}-${{ matrix.arch }}
 
-      - name: Create AVD and generate snapshot for caching
+      - name: Create AVD for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -104,9 +104,10 @@ jobs:
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Plain cold boot; we do not use snapshots at test time (see below).
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
+          script: echo "Generated AVD for caching."
 
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -115,7 +116,11 @@ jobs:
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # -no-snapshot-load: the cached snapshot was created with
+          # -no-snapshot-save, so loading it leaves the input service
+          # unpublished and the runner's `input keyevent 82` unlock crashes.
+          # Cold-boot instead; the AVD itself is cached, so this is fast.
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
             ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
