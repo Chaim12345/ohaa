@@ -168,25 +168,23 @@ jobs:
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
           # Overlay the canonical emulator zip (always contains the linux
-          # binaries), then register the package in the SDK metadata.
-          curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
+          # binaries). 37.2.13 is used because it matches the revision in the
+          # synthesized package.xml below.
+          curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
-          # sdkmanager leaves a manually overlaid zip unregistered; write the
-          # package.xml it would have written so avdmanager/emulator-runner
-          # see the package as installed. The path attribute must match the
-          # directory name exactly.
+          # sdkmanager leaves a manually overlaid zip unregistered; write a
+          # schema-v2 package.xml (no ns4 type-details) that this sdkmanager
+          # generation parses cleanly.
           mkdir -p "$SDK/emulator"
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
-            '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02" xmlns:ns3="http://schemas.android.com/repository/android/generic/02" xmlns:ns4="http://schemas.android.com/repository/android/common/03">' \
+            '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02">' \
             '  <localPackage path="emulator" obsolete="false">' \
-            '    <type-details ns4:type="generic"/>' \
             '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>' \
             '    <display-name>Android Emulator</display-name>' \
             '    <uses-license ref="android-sdk-license"/>' \
             '  </localPackage>' \
             '</ns2:repository>' > "$SDK/emulator/package.xml"
-          # Re-run sdkmanager so it rescans the SDK and picks up package.xml.
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list >/dev/null 2>&1 || true
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;x86_64" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
