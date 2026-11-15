@@ -167,19 +167,27 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/amd64.list
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
-          # Install the emulator package via sdkmanager so it is registered in
-          # package.xml (android-emulator-runner's avdmanager looks it up there).
-          # channel-0 is the only channel that carries emulator on linux.
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --channel=0 "emulator" || true
-          # Also overlay the canonical zip: the linux binaries are always in it.
+          # Overlay the canonical emulator zip (always contains the linux
+          # binaries), then register the package in the SDK metadata.
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
-          # sdkmanager may not write package.xml for manually overlaid zips;
-          # synthesize a minimal one so avdmanager sees the package as installed.
-          if [ ! -f "$SDK/emulator/package.xml" ]; then
-            mkdir -p "$SDK/emulator"
-            printf '%s\n'               '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'               '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02">'               '  <localPackage path="emulator" obsolete="false">'               '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>'               '    <display-name>Android Emulator</display-name>'               '  </localPackage>'               '</ns2:repository>' > "$SDK/emulator/package.xml"
-          fi
+          # sdkmanager leaves a manually overlaid zip unregistered; write the
+          # package.xml it would have written so avdmanager/emulator-runner
+          # see the package as installed. The path attribute must match the
+          # directory name exactly.
+          mkdir -p "$SDK/emulator"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+            '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02" xmlns:ns3="http://schemas.android.com/repository/android/generic/02" xmlns:ns4="http://schemas.android.com/repository/android/common/03">' \
+            '  <localPackage path="emulator" obsolete="false">' \
+            '    <type-details ns4:type="generic"/>' \
+            '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>' \
+            '    <display-name>Android Emulator</display-name>' \
+            '    <uses-license ref="android-sdk-license"/>' \
+            '  </localPackage>' \
+            '</ns2:repository>' > "$SDK/emulator/package.xml"
+          # Re-run sdkmanager so it rescans the SDK and picks up package.xml.
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list >/dev/null 2>&1 || true
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;x86_64" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> "$GITHUB_ENV"
