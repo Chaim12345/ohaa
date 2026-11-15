@@ -149,6 +149,11 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/amd64.list
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
+          # Install the emulator package via sdkmanager so it is registered in
+          # package.xml (android-emulator-runner's avdmanager looks it up there).
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --channel=1 "emulator"
+          # Some sdkmanager builds leave the linux binaries unregistered; the
+          # canonical zip always contains them, so overlay it either way.
           curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
