@@ -50,7 +50,6 @@ import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.EdgeFadeRow
 import com.example.ui.components.StatusBadge
 import com.example.ui.formatRelativeTime
-import com.example.ui.theme.OpenHandsPrimaryDark
 
 @Composable
 fun TasksScreen(
@@ -105,7 +104,7 @@ fun TasksScreen(
             ) {
                 if (isRefreshing) {
                     CircularProgressIndicator(
-                        color = OpenHandsPrimaryDark,
+                        color = MaterialTheme.colorScheme.primary,
                         strokeWidth = 2.dp,
                         modifier = Modifier
                             .size(18.dp)
@@ -145,7 +144,7 @@ fun TasksScreen(
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -170,8 +169,8 @@ fun TasksScreen(
                     label = { Text("All (${conversations.size})") },
                     shape = RoundedCornerShape(10.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
-                        selectedLabelColor = OpenHandsPrimaryDark
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
@@ -193,8 +192,8 @@ fun TasksScreen(
                     label = { Text("${status.label} ($count)") },
                     shape = RoundedCornerShape(10.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
-                        selectedLabelColor = OpenHandsPrimaryDark
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
@@ -211,13 +210,13 @@ fun TasksScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No matching agent tasks",
+                        text = if (statusFilter == null) "No agent tasks yet" else "No matching agent tasks",
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Try clearing filters or start a new task in OpenHands.",
+                        text = if (statusFilter == null) "Start a new task in OpenHands." else "Try clearing filters or start a new task.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -280,7 +279,7 @@ fun TasksScreen(
                                         Icon(
                                             imageVector = Icons.Default.Code,
                                             contentDescription = null,
-                                            tint = OpenHandsPrimaryDark,
+                                            tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -288,7 +287,7 @@ fun TasksScreen(
                                             text = conv.repository,
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
-                                            color = OpenHandsPrimaryDark
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))

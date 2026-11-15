@@ -96,7 +96,8 @@ fun StatusBadge(
 ) {
     val (color, icon) = when (status) {
         ConversationStatus.RUNNING -> Pair(StatusColors.working, Icons.Default.PlayArrow)
-        ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusColors.ready, Icons.Default.CheckCircle)
+        ConversationStatus.READY -> Pair(StatusColors.ready, Icons.Default.CheckCircle)
+        ConversationStatus.FINISHED -> Pair(MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.CheckCircle)
         ConversationStatus.WAITING_FOR_SANDBOX, ConversationStatus.PREPARING_REPOSITORY,
         ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusColors.waiting, Icons.Default.HourglassTop)
         ConversationStatus.AWAITING_CONFIRMATION -> Pair(StatusColors.waiting, Icons.Default.HourglassTop)
