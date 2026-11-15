@@ -28,7 +28,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
@@ -54,6 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +76,8 @@ import com.example.data.model.AgentEvent
 import com.example.data.model.ConversationStatus
 import com.example.ui.theme.OpenHandsBorderDark
 import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.theme.LocalAppIsDark
+import com.example.ui.theme.StatusColors
 import com.example.ui.theme.OpenHandsSecondaryDark
 import com.example.ui.theme.OpenHandsSurfaceVariantDark
 import com.example.ui.theme.OpenHandsTerminalBg
@@ -84,14 +95,14 @@ fun StatusBadge(
     modifier: Modifier = Modifier
 ) {
     val (color, icon) = when (status) {
-        ConversationStatus.RUNNING -> Pair(StatusWorking, Icons.Default.PlayArrow)
-        ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusReady, Icons.Default.CheckCircle)
+        ConversationStatus.RUNNING -> Pair(StatusColors.working, Icons.Default.PlayArrow)
+        ConversationStatus.READY, ConversationStatus.FINISHED -> Pair(StatusColors.ready, Icons.Default.CheckCircle)
         ConversationStatus.WAITING_FOR_SANDBOX, ConversationStatus.PREPARING_REPOSITORY,
-        ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusWaiting, Icons.Default.HourglassTop)
-        ConversationStatus.AWAITING_CONFIRMATION -> Pair(StatusWaiting, Icons.Default.HourglassTop)
-        ConversationStatus.ERROR -> Pair(StatusError, Icons.Default.Error)
-        ConversationStatus.PAUSED -> Pair(StatusPaused, Icons.Default.BugReport)
-        ConversationStatus.UNKNOWN -> Pair(StatusPaused, Icons.Default.BugReport)
+        ConversationStatus.SETTING_UP_SKILLS -> Pair(StatusColors.waiting, Icons.Default.HourglassTop)
+        ConversationStatus.AWAITING_CONFIRMATION -> Pair(StatusColors.waiting, Icons.Default.HourglassTop)
+        ConversationStatus.ERROR -> Pair(StatusColors.error, Icons.Default.Error)
+        ConversationStatus.PAUSED -> Pair(StatusColors.paused, Icons.Default.BugReport)
+        ConversationStatus.UNKNOWN -> Pair(StatusColors.paused, Icons.Default.BugReport)
     }
 
     Surface(
@@ -248,125 +259,182 @@ fun TerminalCodeBlock(
                 text = codeText,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
-                color = Color(0xFF56D364),
+                color = if (LocalAppIsDark.current) Color(0xFF56D364) else Color(0xFF1A7F37),
                 lineHeight = 16.sp
             )
         }
     }
 }
-
 @Composable
 fun EventItemView(
     event: AgentEvent,
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(true) }
+    var isExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     when (event.source.lowercase()) {
         "user" -> {
-            // User prompt message
+            // User prompt: subtle tinted block, right-aligned, no label chrome.
             Row(
                 modifier = modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.End
             ) {
-                Card(
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = OpenHandsPrimaryDark
-                    ),
                     modifier = Modifier.fillMaxWidth(0.88f)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "You (Prompt)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = event.content,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
+                    Text(
+                        text = event.content,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
             }
         }
         else -> {
-            // Agent Event (Thought, Bash, Edit, Observation, Final Message)
             val isThought = event.actionType == "thought"
             val isBash = event.actionType == "bash" || event.content.startsWith("$")
             val isEdit = event.actionType == "edit" || "FileEdit" in event.content
+            val isObservation = event.actionType == "observation" ||
+                event.source.equals("environment", ignoreCase = true)
+            val isMessage = !isThought && !isBash && !isEdit && !isObservation
 
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // Header row
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isExpanded = !isExpanded }
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            val (icon, badgeTitle, badgeColor) = when {
-                                isThought -> Triple(Icons.Default.Lightbulb, "AGENT REASONING", OpenHandsSecondaryDark)
-                                isBash -> Triple(Icons.Default.Terminal, "TOOL: BASH EXECUTION", OpenHandsPrimaryDark)
-                                isEdit -> Triple(Icons.Default.BugReport, "TOOL: FILE EDIT", OpenHandsTertiaryDark)
-                                else -> Triple(Icons.Default.CheckCircle, "AGENT RESPONSE", OpenHandsPrimaryDark)
-                            }
+            when {
+                // Assistant message: plain text, no card, no badge.
+                isMessage -> {
+                    SelectionContainer {
+                        Text(
+                            text = event.content,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 20.sp,
+                            modifier = modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                        )
+                    }
+                }
+                // Thinking: one muted line that expands inline.
+                isThought -> {
+                    Column(modifier = modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clickable { isExpanded = !isExpanded }
+                                .semantics {
+                                    stateDescription = if (isExpanded) "Expanded" else "Collapsed"
+                                    role = Role.Button
+                                }
+                        ) {
                             Icon(
-                                imageVector = icon,
+                                imageVector = Icons.Default.Lightbulb,
                                 contentDescription = null,
-                                tint = badgeColor,
-                                modifier = Modifier.size(16.dp)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = badgeTitle,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = badgeColor
+                                text = if (isExpanded) "Thinking" else "Thinking · " + event.content.lineSequence().firstOrNull().orEmpty(),
+                                fontSize = 12.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (isExpanded) "Collapse" else "Expand",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    AnimatedVisibility(visible = isExpanded) {
-                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                        AnimatedVisibility(visible = isExpanded) {
                             Text(
                                 text = event.content,
                                 fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 18.sp
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(start = 20.dp, bottom = 6.dp)
                             )
-
-                            if (!event.detail.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                TerminalCodeBlock(
-                                    codeText = event.detail,
-                                    title = if (isBash) "terminal execution output" else "diff inspection"
-                                )
+                        }
+                    }
+                }
+                // Tool activity: one-line collapsible row - icon + name + short arg.
+                else -> {
+                    val (icon, toolLabel, tint) = when {
+                        isBash -> Triple(Icons.Default.Terminal, "Bash", MaterialTheme.colorScheme.primary)
+                        isEdit -> Triple(Icons.Default.Edit, "Edit", MaterialTheme.colorScheme.tertiary)
+                        else -> Triple(Icons.Default.Article, "Output", MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    val shortArg = event.content.lineSequence().firstOrNull().orEmpty().take(80)
+                    Column(modifier = modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp)
+                                .clickable { isExpanded = !isExpanded }
+                                .semantics {
+                                    stateDescription = if (isExpanded) "Expanded" else "Collapsed"
+                                    role = Role.Button
+                                }
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = toolLabel,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = tint
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = shortArg,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        AnimatedVisibility(visible = isExpanded) {
+                            Column(modifier = Modifier.padding(start = 20.dp, bottom = 6.dp)) {
+                                if (event.content != shortArg || event.content.contains('\n')) {
+                                    Text(
+                                        text = event.content,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = 17.sp
+                                    )
+                                }
+                                if (!event.detail.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    TerminalCodeBlock(
+                                        codeText = (if (isBash) "\$ " + event.content + "\n" else "") + event.detail,
+                                        title = if (isBash) "terminal" else "detail"
+                                    )
+                                }
                             }
                         }
                     }
@@ -374,6 +442,7 @@ fun EventItemView(
             }
         }
     }
+}
 }
 
 /**

@@ -31,12 +31,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -52,6 +55,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -65,8 +71,7 @@ import com.example.data.model.OpenHandsConversation
 import com.example.ui.components.EventItemView
 import com.example.ui.components.EdgeFadeRow
 import com.example.ui.components.StatusBadge
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.StatusPaused as StatusPausedColor
+import com.example.ui.theme.StatusColors
 
 @Composable
 fun ConversationDetailScreen(
@@ -189,7 +194,7 @@ fun ConversationDetailScreen(
 
     LaunchedEffect(events.size) {
         if (events.isNotEmpty()) {
-            listState.animateScrollToItem(events.size - 1)
+            if (System.getenv("DISABLE_AUTOSCROLL") == null) listState.animateScrollToItem(events.size - 1)
         }
     }
 
@@ -240,7 +245,7 @@ fun ConversationDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Code,
                                     contentDescription = null,
-                                    tint = OpenHandsPrimaryDark,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(12.dp)
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
@@ -248,22 +253,20 @@ fun ConversationDetailScreen(
                                     text = conversation?.repository ?: "",
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = OpenHandsPrimaryDark
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
-                            Text(
-                                text = conversation?.sandboxId
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { "Sandbox: ${it.take(8)}" }
-                                    ?: "Conversation: ${(conversation?.id ?: "").take(8)}",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
+                            if (!conversation?.branch.isNullOrBlank()) {
+                                Text(
+                                    text = "- " + (conversation?.branch ?: ""),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -315,6 +318,41 @@ fun ConversationDetailScreen(
                                 },
                                 modifier = Modifier.testTag("refresh_events_button")
                             )
+                            HorizontalDivider()
+                            listOf(
+                                "Model" to ("model" to onOpenModel),
+                                "Context" to ("context" to onOpenContext),
+                                "Terminal" to ("terminal" to onOpenTerminal),
+                                "Files" to ("files" to onOpenFiles),
+                                "Git" to ("git" to onOpenGit),
+                                "Run" to ("run" to onRun),
+                                "Pause" to ("pause" to onPause),
+                                "Stop" to ("stop" to onStop),
+                                "Advanced" to ("advanced" to onOpenAdvanced),
+                                "Goal" to ("goal" to onOpenGoal),
+                                "Tools" to ("tools" to onOpenTools),
+                                "VS Code" to ("vscode" to onOpenVSCode),
+                                "Skills" to ("skills" to onOpenSkills),
+                                "Final response" to ("final" to onOpenFinalResponse),
+                                "Fork" to ("fork" to onFork),
+                                "Sub-conversations" to ("subconv" to onOpenSubConversations),
+                            ).forEach { (label, tagged) ->
+                                val (tag, action) = tagged
+                                val runtimeTool = tag in setOf(
+                                    "model", "context", "terminal", "files", "git", "run",
+                                    "pause", "stop", "advanced", "goal", "tools", "vscode",
+                                    "skills", "final",
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    enabled = !(runtimeUnavailableReason != null && runtimeTool),
+                                    onClick = {
+                                        showOverflow = false
+                                        action()
+                                    },
+                                    modifier = Modifier.testTag("menu_tool_$tag")
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Rename") },
                                 onClick = {
@@ -340,7 +378,7 @@ fun ConversationDetailScreen(
 
         if (runtimeUnavailableReason != null) {
             Surface(
-                color = StatusPausedColor.copy(alpha = 0.12f),
+                color = StatusColors.paused.copy(alpha = 0.12f),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("runtime_unavailable_banner")
@@ -352,7 +390,7 @@ fun ConversationDetailScreen(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = null,
-                        tint = StatusPausedColor,
+                        tint = StatusColors.paused,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -393,7 +431,7 @@ fun ConversationDetailScreen(
         // paused case, so the user never sees two Resume buttons.
         if (runtimeUnavailableReason == null && conversation?.status == ConversationStatus.PAUSED) {
             Surface(
-                color = StatusPausedColor.copy(alpha = 0.12f),
+                color = StatusColors.paused.copy(alpha = 0.12f),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("paused_banner")
@@ -405,7 +443,7 @@ fun ConversationDetailScreen(
                     Icon(
                         imageVector = Icons.Default.PauseCircleOutline,
                         contentDescription = null,
-                        tint = StatusPausedColor,
+                        tint = StatusColors.paused,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -432,72 +470,6 @@ fun ConversationDetailScreen(
                         } else {
                             Text("Resume", color = MaterialTheme.colorScheme.onPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                    }
-                }
-            }
-        }
-
-        // Runtime tools: model, context, terminal, files, git
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            val toolsRowState = rememberLazyListState()
-            EdgeFadeRow(
-                state = toolsRowState,
-                modifier = Modifier.padding(vertical = 6.dp),
-            ) {
-                val tools = listOf(
-                    Triple("Model", "model", onOpenModel),
-                    Triple("Context", "context", onOpenContext),
-                    Triple("Terminal", "terminal", onOpenTerminal),
-                    Triple("Files", "files", onOpenFiles),
-                    Triple("Git", "git", onOpenGit),
-                    Triple("Run", "run", onRun),
-                    Triple("Pause", "pause", onPause),
-                    Triple("Stop", "stop", onStop),
-                    Triple("Advanced", "advanced", onOpenAdvanced),
-                    Triple("Goal", "goal", onOpenGoal),
-                    Triple("Tools", "tools", onOpenTools),
-                    Triple("VS Code", "vscode", onOpenVSCode),
-                    Triple("Skills", "skills", onOpenSkills),
-                    Triple("Final", "final", onOpenFinalResponse),
-                    Triple("Fork", "fork", onFork),
-                    Triple("Sub-conv", "subconv", onOpenSubConversations),
-                )
-                // Fork and sub-conversations are cloud operations; the rest need a
-                // live sandbox, so they are disabled while the runtime is blocked.
-                val runtimeTools = setOf(
-                    "model", "context", "terminal", "files", "git", "run",
-                    "pause", "stop", "advanced", "goal", "tools", "vscode",
-                    "skills", "final",
-                )
-                val runtimeBlocked = runtimeUnavailableReason != null
-                items(tools) { (label, tag, action) ->
-                    val enabled = !(runtimeBlocked && tag in runtimeTools)
-                    Surface(
-                        color = when (label) {
-                            "Stop" -> MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-                            "Run" -> OpenHandsPrimaryDark.copy(alpha = 0.12f)
-                            else -> MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .clickable(enabled = enabled, onClick = action)
-                            .testTag("tool_$tag")
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = when {
-                                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                label == "Stop" -> MaterialTheme.colorScheme.error
-                                label == "Run" -> OpenHandsPrimaryDark
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
                     }
                 }
             }
@@ -542,7 +514,7 @@ fun ConversationDetailScreen(
                             )
                         } else {
                             CircularProgressIndicator(
-                                color = OpenHandsPrimaryDark,
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(28.dp)
                             )
                             Spacer(modifier = Modifier.height(10.dp))
@@ -559,6 +531,7 @@ fun ConversationDetailScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .semantics { liveRegion = LiveRegionMode.Polite }
                         .padding(horizontal = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -577,12 +550,44 @@ fun ConversationDetailScreen(
             }
         }
 
-        // Quick Suggestion Chips
+        // Composer area: confirmation bar (when awaiting), suggestions (empty only), input
         Surface(
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+                if (conversation?.status == ConversationStatus.AWAITING_CONFIRMATION) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .testTag("confirmation_bar")
+                    ) {
+                        OutlinedButton(
+                            onClick = { onConfirm(false) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("reject_button")
+                        ) {
+                            Text("Reject")
+                        }
+                        Button(
+                            onClick = { onConfirm(true) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("accept_button")
+                        ) {
+                            Text("Accept")
+                        }
+                    }
+                }
+                if (events.isEmpty()) {
                 val suggestionsRowState = rememberLazyListState()
                 EdgeFadeRow(state = suggestionsRowState) {
                     items(quickSuggestions) { suggestion ->
@@ -601,6 +606,8 @@ fun ConversationDetailScreen(
                             )
                         }
                     }
+                }
+
                 }
 
                 // Input bar
@@ -654,7 +661,7 @@ fun ConversationDetailScreen(
                         maxLines = 3,
                         shape = RoundedCornerShape(18.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = OpenHandsPrimaryDark,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         ),
                         modifier = Modifier
@@ -672,10 +679,10 @@ fun ConversationDetailScreen(
                         },
                         enabled = followUpText.isNotBlank() && !isSendingMessage,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(48.dp)
                             .background(
-                                if (followUpText.isNotBlank()) OpenHandsPrimaryDark else MaterialTheme.colorScheme.surfaceVariant,
-                                RoundedCornerShape(14.dp)
+                                if (followUpText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(24.dp)
                             )
                             .testTag("send_follow_up_button")
                     ) {
@@ -791,7 +798,7 @@ private fun ChangesPanel(
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
-                            color = OpenHandsPrimaryDark,
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(16.dp)
                         )
@@ -799,7 +806,7 @@ private fun ChangesPanel(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh changed files",
-                            tint = OpenHandsPrimaryDark,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                     }

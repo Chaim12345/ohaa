@@ -137,3 +137,7 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.withType<Test>().configureEach {
+    maxHeapSize = "600m"
+}

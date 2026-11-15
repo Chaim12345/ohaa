@@ -15,6 +15,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +57,7 @@ fun ApiExplorerScreen(
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Text("API Explorer", style = MaterialTheme.typography.titleLarge)
+        Text("API Explorer", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
         Text(
             "Call any documented endpoint. Paths use {} for parameters — replace them with real values.",
             fontSize = 12.sp,
@@ -155,12 +156,14 @@ fun ApiExplorerScreen(
             }
         }
 
-        Text("Available paths", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+        Text("Available paths", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(top = 16.dp))
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(paths) { p ->
                 Text(
                     p,
                     fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = FontFamily.Monospace,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 3.dp)
