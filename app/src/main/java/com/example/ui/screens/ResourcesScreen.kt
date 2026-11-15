@@ -159,7 +159,7 @@ fun ResourcesScreen(
             state = tabRowState,
             contentPadding = PaddingValues(horizontal = 0.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag("resources_tabs")
         ) {
             items(listOf("Secrets", "Skills", "Sandboxes", "Git", "Profiles", "Settings")) { s ->
                 FilterChip(

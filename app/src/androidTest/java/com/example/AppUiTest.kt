@@ -1,9 +1,11 @@
 package com.example
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -81,7 +83,8 @@ class AppUiTest {
     fun resourcesProfilesExposesAcpAgentProfileEditor() {
         tag("nav_resources").performClick()
         composeRule.waitForIdle()
-        tag("resources_tab_Profiles").performScrollTo().performClick()
+        tag("resources_tabs").performScrollToNode(hasTestTag("resources_tab_Profiles"))
+        tag("resources_tab_Profiles").performClick()
         composeRule.waitForIdle()
 
         tag("agent_profile_name_input").performScrollTo().assertIsDisplayed()
