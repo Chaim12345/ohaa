@@ -158,7 +158,12 @@ jobs:
             libpulse0:amd64 libasound2t64:amd64 libxkbcommon0:amd64 \
             libnss3:amd64 libnspr4:amd64 libatk1.0-0t64:amd64 libatk-bridge2.0-0t64:amd64 \
             libcups2t64:amd64 libdrm2:amd64 libgbm1:amd64 libxcomposite1:amd64 \
-            libxrandr2:amd64 libxi6:amd64 libxtst6:amd64 libxss1:amd64 || true
+            libxrandr2:amd64 libxi6:amd64 libxtst6:amd64 libxss1:amd64 \
+            libxkbfile1:amd64 libxinerama1:amd64 libxcursor1:amd64 libsm6:amd64 \
+            libice6:amd64 libuuid1:amd64 libexpat1:amd64 libffi8:amd64 \
+            libdbus-1-3:amd64 libsystemd0:amd64 liblzma5:amd64 libbz2-1.0:amd64 \
+            libgcrypt20:amd64 libgpg-error0:amd64 libcap2:amd64 libselinux1:amd64 \
+            libpcre2-8-0:amd64 libzstd1:amd64 liblz4-1:amd64 || true
           sudo rm -f /etc/apt/sources.list.d/amd64.list
           sudo systemctl restart systemd-binfmt 2>/dev/null || true
           update-binfmts --enable qemu-x86_64 2>/dev/null || true
