@@ -237,7 +237,7 @@ fun TerminalCodeBlock(
                     clipboard.setText(AnnotatedString(codeText))
                     Toast.makeText(context, "Output copied to clipboard", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
