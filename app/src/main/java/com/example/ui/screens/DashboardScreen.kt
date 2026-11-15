@@ -61,8 +61,6 @@ import com.example.ui.components.StatMetricCard
 import com.example.ui.components.StatusBadge
 import com.example.ui.formatRelativeTime
 import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsSecondaryDark
-import com.example.ui.theme.OpenHandsTertiaryDark
 import com.example.ui.theme.StatusColors
 
 @Composable
@@ -227,7 +225,7 @@ fun DashboardScreen(
                     value = activeCount.toString(),
                     subtitle = "Running Sandboxes",
                     icon = Icons.Default.HourglassBottom,
-                    accentColor = OpenHandsSecondaryDark,
+                    accentColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.weight(1f)
                 )
                 StatMetricCard(
@@ -235,7 +233,7 @@ fun DashboardScreen(
                     value = finishedCount.toString(),
                     subtitle = "Completed Runs",
                     icon = Icons.Default.CheckCircleOutline,
-                    accentColor = OpenHandsTertiaryDark,
+                    accentColor = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.weight(1f)
                 )
                 StatMetricCard(
