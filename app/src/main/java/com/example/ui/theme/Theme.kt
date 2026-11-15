@@ -28,6 +28,18 @@ object StatusColors {
 /** User-selectable appearance. [SYSTEM] follows the device setting. */
 enum class ThemeMode { SYSTEM, DARK, LIGHT }
 
+/** True when the app is currently rendering with the dark color scheme. */
+val LocalAppIsDark = staticCompositionLocalOf { false }
+
+/** Per-theme status colors so light mode gets AA-passing variants. */
+object StatusColors {
+  val working @Composable get() = if (LocalAppIsDark.current) StatusWorking else StatusWorkingLight
+  val ready @Composable get() = if (LocalAppIsDark.current) StatusReady else StatusReadyLight
+  val waiting @Composable get() = if (LocalAppIsDark.current) StatusWaiting else StatusWaitingLight
+  val error @Composable get() = if (LocalAppIsDark.current) StatusError else StatusErrorLight
+  val paused @Composable get() = if (LocalAppIsDark.current) StatusPaused else StatusPausedLight
+}
+
 private val DarkColorScheme =
   darkColorScheme(
     primary = OpenHandsPrimaryDark,
