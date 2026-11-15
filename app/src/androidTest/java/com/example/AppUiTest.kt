@@ -1,6 +1,5 @@
 package com.example
 
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -45,12 +44,12 @@ class AppUiTest {
             // Only the selected tab is composed, so the landmark existing proves
             // the tap switched screens. assertExists (not assertIsDisplayed)
             // because a landmark need not sit in a scrollable ancestor.
-            tag(landmark).assertExists()
+            tag(landmark).assertIsDisplayed()
         }
         // API Explorer is reached from Settings > Developer, not the bottom bar.
         tag("nav_explorer").performScrollTo().performClick()
         composeRule.waitForIdle()
-        tag("explorer_surface_cloud").assertExists()
+        tag("explorer_surface_cloud").assertIsDisplayed()
     }
 
     @Test
