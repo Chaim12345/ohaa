@@ -537,6 +537,7 @@ fun OpenHandsApp(
                 onSaveConfig = { viewModel.saveConfig() },
                 onTestConnection = { viewModel.testConnection() },
                 onClearCache = { viewModel.clearLocalCache() },
+                onOpenApiExplorer = { viewModel.setTab(AppNavTab.EXPLORER) },
                 keepAliveEnabled = uiState.keepAliveEnabled,
                 onKeepAliveChanged = { enabled -> viewModel.setKeepAliveEnabled(enabled) },
                 themeMode = uiState.themeMode,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Api
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -74,6 +75,7 @@ fun SettingsScreen(
     onSaveConfig: () -> Unit,
     onTestConnection: () -> Unit,
     onClearCache: () -> Unit,
+    onOpenApiExplorer: () -> Unit = {},
     keepAliveEnabled: Boolean = false,
     onKeepAliveChanged: (Boolean) -> Unit = {},
     themeMode: String = "SYSTEM",
@@ -432,6 +434,21 @@ fun SettingsScreen(
             Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null)
             Spacer(modifier = Modifier.width(6.dp))
             Text("Reset Local Database Cache")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Developer: API Explorer
+        OutlinedButton(
+            onClick = onOpenApiExplorer,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("nav_explorer")
+        ) {
+            Icon(imageVector = Icons.Default.Api, contentDescription = null)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Developer: API Explorer")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

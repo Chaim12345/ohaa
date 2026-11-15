@@ -1,5 +1,6 @@
 package com.example
 
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,9 +34,8 @@ class AppUiTest {
         val destinations = listOf(
             "nav_dashboard" to "hero_banner_card",
             "nav_tasks" to "tasks_search_input",
-            "nav_new_task" to "task_prompt_input",
+            "fab_new_task" to "task_prompt_input",
             "nav_resources" to "resources_refresh",
-            "nav_explorer" to "explorer_path",
             "nav_settings" to "settings_api_key_input",
         )
         tag("bottom_nav_bar").assertIsDisplayed()
@@ -47,6 +47,10 @@ class AppUiTest {
             // because a landmark need not sit in a scrollable ancestor.
             tag(landmark).assertExists()
         }
+        // API Explorer is reached from Settings > Developer, not the bottom bar.
+        tag("nav_explorer").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        tag("explorer_surface_cloud").assertExists()
     }
 
     @Test
