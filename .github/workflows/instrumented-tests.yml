@@ -180,8 +180,10 @@ jobs:
             mkdir -p "$SDK/emulator"
             printf '%s\n'               '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'               '<ns2:repository xmlns:ns2="http://schemas.android.com/repository/android/common/02">'               '  <localPackage path="emulator" obsolete="false">'               '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>'               '    <display-name>Android Emulator</display-name>'               '  </localPackage>'               '</ns2:repository>' > "$SDK/emulator/package.xml"
           fi
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;x86_64" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> "$GITHUB_ENV"
+          echo "PATH=$SDK/emulator:$SDK/platform-tools:$SDK/cmdline-tools/latest/bin:$PATH" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           "$SDK/platform-tools/adb" version | head -1
           "$SDK/emulator/emulator" -version 2>&1 | head -1
