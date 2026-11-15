@@ -95,16 +95,20 @@ jobs:
       # on PATH (it locates sdkmanager/adb itself).
       # The arm64 runner image has no ANDROID_HOME env var; its SDK lives at
       # /usr/local/lib/android/sdk. Install the missing packages there.
-      - name: Install Android SDK packages (arm64 runner)
+      # The ubuntu-24.04-arm runner image ships no Android SDK at all (unlike
+      # ubuntu-latest, which has one under /usr/local/lib/android/sdk). Use
+      # actions/setup-android-sdk to install a minimal SDK, then add the
+      # emulator + arm64-v8a system image that android-emulator-runner needs.
+      - name: Install Android SDK (arm64 runner)
         if: matrix.arch == 'arm64'
-        run: |
-          SDK=$(dirname "$(find /usr/local/lib/android /opt /usr/lib/android-sdk -maxdepth 4 -name sdkmanager -path '*cmdline-tools*' 2>/dev/null | head -1)")
-          SDK=$(dirname "$SDK"); SDK=$(dirname "$SDK")
-          [ -d "$SDK/cmdline-tools" ] || { echo "SDK not found"; find / -maxdepth 5 -name sdkmanager -path '*cmdline-tools*' 2>/dev/null | head -3; exit 1; }
-          echo "ANDROID_HOME=$SDK"; ls "$SDK/cmdline-tools"
-          yes | sudo "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "emulator" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+        uses: android-actions/setup-android-sdk@v3
+        with:
+          cmdline-tools-version: latest
+          packages: |
+            emulator
+            platform-tools
+            platforms;android-30
+            system-images;android-30;default;arm64-v8a
 
       # KVM must be readable for the emulator to use hardware acceleration.
       # Only needed on x86_64; the arm64 runner has no /dev/kvm and the arm64
