@@ -113,7 +113,9 @@ jobs:
           # channel-3 = latest stable metadata that still carries the emulator pkg
           # The bundled sdkmanager lists arm64 images but not the emulator pkg itself;
           # install the emulator straight from the canonical repository zip.
-          curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_aarch64-36.1.11.zip"
+          # No linux aarch64 emulator zip is published; the x86_64 emulator binary
+          # runs fine under qemu-user on the arm64 runner via binfmt, so install it.
+          curl -sSL -o /tmp/emulator.zip "https://dl.google.com/android/repository/emulator-linux_x64-16863232.zip"
           unzip -q /tmp/emulator.zip -d "$SDK"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
