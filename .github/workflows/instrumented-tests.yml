@@ -191,7 +191,8 @@ jobs:
             '    <display-name>Android Emulator</display-name>' \
                         '  </localPackage>' \
             '</ns2:repository>' > "$SDK/emulator/package.xml"
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list >/dev/null 2>&1 || true
+          # Diagnostics: does sdkmanager now see the emulator as installed?
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list 2>/dev/null | grep -iE "^  emulator|path.*emulator" | head -3 || echo "emulator NOT in sdkmanager --list"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;x86_64" "system-images;android-30;default;arm64-v8a"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> "$GITHUB_ENV"
