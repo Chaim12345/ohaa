@@ -181,8 +181,7 @@ jobs:
             '  <localPackage path="emulator" obsolete="false">' \
             '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>' \
             '    <display-name>Android Emulator</display-name>' \
-            '    <uses-license ref="android-sdk-license"/>' \
-            '  </localPackage>' \
+                        '  </localPackage>' \
             '</ns2:repository>' > "$SDK/.knownPackages/package.xml"
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
@@ -190,8 +189,7 @@ jobs:
             '  <localPackage path="emulator" obsolete="false">' \
             '    <revision><major>37</major><minor>2</minor><micro>13</micro></revision>' \
             '    <display-name>Android Emulator</display-name>' \
-            '    <uses-license ref="android-sdk-license"/>' \
-            '  </localPackage>' \
+                        '  </localPackage>' \
             '</ns2:repository>' > "$SDK/emulator/package.xml"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --list >/dev/null 2>&1 || true
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-30" "system-images;android-30;default;x86_64" "system-images;android-30;default;arm64-v8a"
