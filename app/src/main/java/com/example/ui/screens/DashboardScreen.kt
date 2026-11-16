@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,7 +48,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,10 +59,9 @@ import com.example.data.model.OpenHandsConversation
 import com.example.data.model.PromptTemplate
 import com.example.ui.components.StatMetricCard
 import com.example.ui.components.StatusBadge
+import com.example.ui.formatRelativeTime
 import com.example.ui.theme.OpenHandsBorderDark
-import com.example.ui.theme.OpenHandsPrimaryDark
-import com.example.ui.theme.OpenHandsSecondaryDark
-import com.example.ui.theme.OpenHandsTertiaryDark
+import com.example.ui.theme.StatusColors
 
 @Composable
 fun DashboardScreen(
@@ -70,6 +69,9 @@ fun DashboardScreen(
     templates: List<PromptTemplate>,
     connectionStatus: String?,
     connectionHealthy: Boolean?,
+    totalConversationCount: Int? = null,
+    isLoading: Boolean = false,
+    isRefreshing: Boolean = false,
     onStartNewTask: () -> Unit,
     onSelectConversation: (String) -> Unit,
     onSelectTemplate: (PromptTemplate) -> Unit,
@@ -77,9 +79,9 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val activeCount = conversations.count { it.status == ConversationStatus.WORKING || it.status == ConversationStatus.RUNNING }
-    val readyCount = conversations.count { it.status == ConversationStatus.READY || it.status == ConversationStatus.FINISHED }
-    val totalCount = conversations.size
+    val activeCount = conversations.count { it.status == ConversationStatus.RUNNING }
+    val finishedCount = conversations.count { it.status == ConversationStatus.FINISHED }
+    val readyCount = conversations.count { it.status == ConversationStatus.READY }
 
     LazyColumn(
         modifier = modifier
@@ -107,6 +109,14 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (totalConversationCount != null) {
+                        Text(
+                            text = "$totalConversationCount conversations on the server",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("dashboard_total_count")
+                        )
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -114,11 +124,21 @@ fun DashboardScreen(
                         onClick = onRefresh,
                         modifier = Modifier.testTag("refresh_dashboard_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh data",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        if (isLoading || isRefreshing) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .testTag("dashboard_refresh_spinner")
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh data",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     IconButton(
                         onClick = onOpenSettings,
@@ -134,67 +154,38 @@ fun DashboardScreen(
             }
         }
 
-        // Hero Image Banner
+        // Status header (plain, no hero art)
         item {
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("hero_banner_card")
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_openhands_banner),
-                        contentDescription = "OpenHands Cloud Control Center",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color(0xEE0D1117)
-                                    )
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(14.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (connectionHealthy == true) Color(0xFF3FB950) else Color(0xFFF0883E))
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = connectionStatus ?: "Cloud API V1: Ready",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.9f),
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (connectionHealthy == true) StatusColors.ready else StatusColors.working)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Autonomous Coding Sandbox",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            text = connectionStatus ?: "Cloud API V1: Ready",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
                         )
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Autonomous Coding Sandbox",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
@@ -203,22 +194,22 @@ fun DashboardScreen(
         item {
             Button(
                 onClick = onStartNewTask,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = OpenHandsPrimaryDark
+                    containerColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
                     .testTag("new_agent_task_cta")
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = Color.White)
+                Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Launch New Agent Task",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
@@ -234,21 +225,30 @@ fun DashboardScreen(
                     value = activeCount.toString(),
                     subtitle = "Running Sandboxes",
                     icon = Icons.Default.HourglassBottom,
-                    accentColor = OpenHandsSecondaryDark,
+                    accentColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.weight(1f)
                 )
                 StatMetricCard(
                     title = "Finished Tasks",
-                    value = readyCount.toString(),
-                    subtitle = "Verified & Passed",
+                    value = finishedCount.toString(),
+                    subtitle = "Completed Runs",
                     icon = Icons.Default.CheckCircleOutline,
-                    accentColor = OpenHandsTertiaryDark,
+                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.weight(1f)
+                )
+                StatMetricCard(
+                    title = "Ready",
+                    value = readyCount.toString(),
+                    subtitle = "Awaiting Instruction",
+                    icon = Icons.Default.Memory,
+                    accentColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
             }
         }
 
-        // Template Presets
+        // Template Presets (hidden when empty)
+        if (templates.isNotEmpty()) {
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -277,12 +277,12 @@ fun DashboardScreen(
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Surface(
-                                    color = OpenHandsPrimaryDark.copy(alpha = 0.15f),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        text = template.category.uppercase(),
-                                        color = OpenHandsPrimaryDark,
+                                        text = template.category,
+                                        color = MaterialTheme.colorScheme.primary,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
@@ -311,6 +311,7 @@ fun DashboardScreen(
                 }
             }
         }
+        }
 
         // Recent Tasks
         item {
@@ -330,6 +331,54 @@ fun DashboardScreen(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        if (conversations.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dashboard_empty_state")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeveloperBoard,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(30.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (connectionHealthy == false) {
+                                "Not connected to OpenHands Cloud"
+                            } else {
+                                "No agent executions yet"
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (connectionHealthy == false) {
+                                "Add your API key under Cloud API settings, then refresh."
+                            } else {
+                                "Launch a task to start your first sandboxed agent run."
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
@@ -375,7 +424,7 @@ fun DashboardScreen(
                                 Icon(
                                     imageVector = Icons.Default.Code,
                                     contentDescription = null,
-                                    tint = OpenHandsPrimaryDark,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -383,24 +432,25 @@ fun DashboardScreen(
                                     text = conv.repository,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = OpenHandsPrimaryDark
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                         }
 
                         Text(
-                            text = "${conv.messageCount} actions",
+                            text = "Updated ${formatRelativeTime(conv.updatedAt)}",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    if (!conv.lastMessage.isNullOrBlank()) {
+                    if (!conv.branch.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = conv.lastMessage,
-                            fontSize = 12.sp,
+                            text = "branch: ${conv.branch}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

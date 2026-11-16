@@ -17,6 +17,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1")
     suspend fun getConversationDirect(id: String): ConversationEntity?
 
+    @Query("SELECT * FROM conversations WHERE status NOT IN (:terminalStatuses)")
+    suspend fun getActiveConversations(terminalStatuses: List<String> = listOf("FINISHED", "ERROR")): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversations(items: List<ConversationEntity>)
 
@@ -35,10 +38,10 @@ interface ConversationDao {
 
 @Dao
 interface EventDao {
-    @Query("SELECT * FROM events WHERE conversationId = :conversationId ORDER BY timestamp ASC")
+    @Query("SELECT * FROM events WHERE conversationId = :conversationId ORDER BY sortKey ASC")
     fun getEventsForConversation(conversationId: String): Flow<List<AgentEventEntity>>
 
-    @Query("SELECT * FROM events WHERE conversationId = :conversationId ORDER BY timestamp ASC")
+    @Query("SELECT * FROM events WHERE conversationId = :conversationId ORDER BY sortKey ASC")
     suspend fun getEventsDirect(conversationId: String): List<AgentEventEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -10,12 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -45,8 +47,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ConversationStatus
 import com.example.data.model.OpenHandsConversation
+import com.example.ui.components.EdgeFadeRow
 import com.example.ui.components.StatusBadge
-import com.example.ui.theme.OpenHandsPrimaryDark
+import com.example.ui.formatRelativeTime
 
 @Composable
 fun TasksScreen(
@@ -58,6 +61,7 @@ fun TasksScreen(
     onSelectConversation: (String) -> Unit,
     onStartNewTask: () -> Unit,
     onRefresh: () -> Unit,
+    isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val filtered = conversations.filter { conv ->
@@ -98,11 +102,21 @@ fun TasksScreen(
                 onClick = onRefresh,
                 modifier = Modifier.testTag("refresh_tasks_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh tasks",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .testTag("tasks_refresh_spinner")
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh tasks",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -130,7 +144,7 @@ fun TasksScreen(
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = OpenHandsPrimaryDark,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
             ),
             modifier = Modifier
@@ -141,7 +155,10 @@ fun TasksScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Status Filter Chips
-        LazyRow(
+        val filterRowState = rememberLazyListState()
+        EdgeFadeRow(
+            state = filterRowState,
+            contentPadding = PaddingValues(horizontal = 0.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -152,14 +169,16 @@ fun TasksScreen(
                     label = { Text("All (${conversations.size})") },
                     shape = RoundedCornerShape(10.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
-                        selectedLabelColor = OpenHandsPrimaryDark
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
             val filterOptions = listOf(
-                ConversationStatus.WORKING,
+                ConversationStatus.RUNNING,
+                ConversationStatus.AWAITING_CONFIRMATION,
                 ConversationStatus.READY,
+                ConversationStatus.PAUSED,
                 ConversationStatus.FINISHED,
                 ConversationStatus.ERROR
             )
@@ -173,8 +192,8 @@ fun TasksScreen(
                     label = { Text("${status.label} ($count)") },
                     shape = RoundedCornerShape(10.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OpenHandsPrimaryDark.copy(alpha = 0.2f),
-                        selectedLabelColor = OpenHandsPrimaryDark
+                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
@@ -191,13 +210,13 @@ fun TasksScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No matching agent tasks",
+                        text = if (statusFilter == null) "No agent tasks yet" else "No matching agent tasks",
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Try clearing filters or start a new task in OpenHands.",
+                        text = if (statusFilter == null) "Start a new task in OpenHands." else "Try clearing filters or start a new task.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -260,7 +279,7 @@ fun TasksScreen(
                                         Icon(
                                             imageVector = Icons.Default.Code,
                                             contentDescription = null,
-                                            tint = OpenHandsPrimaryDark,
+                                            tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -268,7 +287,7 @@ fun TasksScreen(
                                             text = conv.repository,
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
-                                            color = OpenHandsPrimaryDark
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(10.dp))
@@ -284,19 +303,20 @@ fun TasksScreen(
                                 Spacer(modifier = Modifier.weight(1f))
 
                                 Text(
-                                    text = "${conv.messageCount} msgs",
+                                    text = formatRelativeTime(conv.updatedAt),
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
-                            if (!conv.lastMessage.isNullOrBlank()) {
+                            if (!conv.branch.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = conv.lastMessage,
-                                    fontSize = 12.sp,
+                                    text = "branch: ${conv.branch}",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }

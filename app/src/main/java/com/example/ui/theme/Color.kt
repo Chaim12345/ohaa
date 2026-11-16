@@ -32,3 +32,10 @@ val OpenHandsTertiaryLight = Color(0xFF1A7F37)
 val OpenHandsTextPrimaryLight = Color(0xFF1F2328)
 val OpenHandsTextSecondaryLight = Color(0xFF656D76)
 
+
+// Light-theme status colors (AA on the light background; the dark variants above fail on it)
+val StatusWorkingLight = Color(0xFF9A4E00)
+val StatusReadyLight = Color(0xFF1A7F37)
+val StatusWaitingLight = Color(0xFF7A5C00)
+val StatusErrorLight = Color(0xFFCF222E)
+val StatusPausedLight = Color(0xFF57606A)

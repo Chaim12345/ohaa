@@ -5,6 +5,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+/** User-selectable appearance. [SYSTEM] follows the device setting. */
+enum class ThemeMode { SYSTEM, DARK, LIGHT }
+
+/** True when the app is currently rendering with the dark color scheme. */
+val LocalAppIsDark = staticCompositionLocalOf { false }
+
+/** Per-theme status colors so light mode gets AA-passing variants. */
+object StatusColors {
+  val working @Composable get() = if (LocalAppIsDark.current) StatusWorking else StatusWorkingLight
+  val ready @Composable get() = if (LocalAppIsDark.current) StatusReady else StatusReadyLight
+  val waiting @Composable get() = if (LocalAppIsDark.current) StatusWaiting else StatusWaitingLight
+  val error @Composable get() = if (LocalAppIsDark.current) StatusError else StatusErrorLight
+  val paused @Composable get() = if (LocalAppIsDark.current) StatusPaused else StatusPausedLight
+}
 
 private val DarkColorScheme =
   darkColorScheme(
@@ -42,10 +60,26 @@ private val LightColorScheme =
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = true, // Default to rich developer dark theme, toggleable
+  darkTheme: Boolean = true,
   content: @Composable () -> Unit,
 ) {
   val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+  CompositionLocalProvider(LocalAppIsDark provides darkTheme) {
+    MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+  }
+}
+
+/** Resolves a user [ThemeMode] (including [ThemeMode.SYSTEM]) to a color scheme. */
+@Composable
+fun MyApplicationTheme(
+  themeMode: ThemeMode,
+  content: @Composable () -> Unit,
+) {
+  val dark = when (themeMode) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.DARK -> true
+    ThemeMode.LIGHT -> false
+  }
+  MyApplicationTheme(darkTheme = dark, content = content)
 }
 
