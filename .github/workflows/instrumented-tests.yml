@@ -201,6 +201,8 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           "$SDK/platform-tools/adb" version | head -1
           "$SDK/emulator/emulator" -version 2>&1 | head -1
+          # Probe: can the x86_64 emulator binary even start under qemu-user?
+          timeout 30 "$SDK/emulator/emulator" -accel-check 2>&1 | head -5 || true
 
       # KVM must be readable for the emulator to use hardware acceleration.
       # Only needed on x86_64; the arm64 runner has no /dev/kvm and the arm64
@@ -233,7 +235,7 @@ jobs:
           # On the arm64 runner the emulator binary is x86_64 and runs under
           # qemu-user, which cannot nest-emulate an arm64 system image. The
           # test APK is architecture-agnostic, so boot the x86_64 image.
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -verbose
           disable-animations: false
           script: echo "Generated AVD for caching."
 
