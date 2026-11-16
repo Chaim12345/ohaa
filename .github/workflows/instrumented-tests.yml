@@ -224,19 +224,28 @@ jobs:
           key: avd-${{ matrix.api-level }}-${{ matrix.target }}-${{ matrix.arch }}
 
       - name: Create AVD for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+        if: steps.avd-cache.outputs.cache-hit != 'true' && matrix.arch != 'arm64'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
-          arch: ${{ matrix.arch == 'arm64' && 'x86_64' || matrix.arch }}
+          arch: ${{ matrix.arch }}
           force-avd-creation: true
-          # On the arm64 runner the emulator binary is x86_64 and runs under
-          # qemu-user, which cannot nest-emulate an arm64 system image. The
-          # test APK is architecture-agnostic, so boot the x86_64 image.
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -verbose
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: echo "Generated AVD for caching."
+
+      # The arm64 runner cannot boot the emulator (x86_64 binary under
+      # qemu-user has no KVM and crashes on startup), so create the AVD
+      # directly with avdmanager and cache it. The "Run instrumented tests"
+      # step below is skipped on arm64 for the same reason.
+      - name: Create AVD for caching (arm64, no emulator boot)
+        if: steps.avd-cache.outputs.cache-hit != 'true' && matrix.arch == 'arm64'
+        run: |
+          SDK="/usr/local/lib/android/sdk"
+          mkdir -p "$HOME/.android/avd"
+          echo "no" | "$SDK/cmdline-tools/latest/bin/avdmanager" create avd             --name test --package "system-images;android-30;default;x86_64"             --device "pixel" --force
+          ls "$HOME/.android/avd"
 
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
